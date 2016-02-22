@@ -83,7 +83,7 @@ def xyzfield(gcoefs,hcoefs,phi,theta,rparam=1.0,order=13):
             x+=deltax
             y+=deltay
             z+=deltaz
-
+            
     return(x,y,z)
 
 def xyzfieldv(gcoefs,hcoefs,phiv,thetav,rparam=1.0,order=13):
@@ -161,7 +161,7 @@ def ghinterp(gcoefsdict,hcoefsdict,t):
     return (g,h)
 
 
-def xyzplot(theta,phi,x,y,z):
+def xyzplot(theta,phi,x,y,z,vmin=-70000, vmax=70000):
     """
     plots the x,y, and z components of the magnetic field in three separate color plots, over
     a world map in cylindrical equidistant projection, given point coordinate vectors theta and phi
@@ -183,15 +183,17 @@ def xyzplot(theta,phi,x,y,z):
     base.drawcoastlines(ax=axis3)
 
     pyplot.set_cmap("viridis")
-    axis1.pcolor(xtrans,ytrans,numpy.rot90(x),vmin=-70000,vmax=+70000)
-    axis2.pcolor(xtrans,ytrans,numpy.rot90(y),vmin=-70000,vmax=+70000)
-    cplot=axis3.pcolor(xtrans,ytrans,numpy.rot90(z),vmin=-70000,vmax=+70000)
+    axis1.pcolor(xtrans,ytrans,numpy.rot90(x),vmin=vmin,vmax=vmax)
+    axis2.pcolor(xtrans,ytrans,numpy.rot90(y),vmin=vmin,vmax=vmax)
+    cplot=axis3.pcolor(xtrans,ytrans,numpy.rot90(z),vmin=vmin,vmax=vmax)
  
     pyplot.colorbar(mappable=cplot,orientation="vertical",ax=[axis1,axis2,axis3],aspect=40,format="%1.0f nT")
 
     fig.show()
 
-def plotfield(filename="MCO_2C.DBL", resolution=(200,200), rparam=1.0, order=13, projection="cyl"):
+    return fig
+
+def plotfield(filename="MCO_2C.DBL", resolution=(200,200), rparam=1.0, order=13, projection="cyl", vmin=-70000, vmax=+70000):
     """
     plot the magnetic fiEEEEEEELD
     """
@@ -205,4 +207,4 @@ def plotfield(filename="MCO_2C.DBL", resolution=(200,200), rparam=1.0, order=13,
 
     x,y,z=xyzfieldv(g,h,phi,theta,rparam,order)
 
-    xyzplot(theta,phi,x,y,z)
+    return xyzplot(theta,phi,x,y,z,vmin,vmax)
