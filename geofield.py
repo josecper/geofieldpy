@@ -70,14 +70,24 @@ class SwarmData(object):
 
             diffx=(highx-lowx)/(p[1]-p[0])
             diffy=(highy-lowy)/(p[1]-p[0])
-            diffz=(highy-lowy)/(p[1]-p[0])
+            diffz=(highz-lowz)/(p[1]-p[0])
 
             diffs.append((diffx,diffy,diffz))
 
         return numpy.array(diffs)
         
-        
+def locationfield(lat,lon,x,y,z,phiv,thetav):
 
+    theta=scipy.pi/2-numpy.deg2rad(lat)
+    phi=numpy.deg2rad(lon)
+
+    x_atlocation=scipy.interpolate.inqterp2d(phiv,thetav,x,kind="linear")(phi,theta)
+    y_atlocation=scipy.interpolate.interp2d(phiv,thetav,y,kind="linear")(phi,theta)
+    z_atlocation=scipy.interpolate.interp2d(phiv,thetav,z,kind="linear")(phi,theta)
+    
+    return numpy.array((x_atlocation,y_atlocation,z_atlocation))
+
+    
 def interpolatecoefs(times,gcoefsd,hcoefsd):
     """
     gcoefsd = dictionary of { float : m*l float64 array }
