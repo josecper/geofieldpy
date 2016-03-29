@@ -1,9 +1,9 @@
 import numpy
-import scipy
+import scipy, scipy.sparse, scipy.interpolate
 
 class SwarmData(object):
 
-    def __init__(self,filename,sparse=True):
+    def __init__(self,filename,sparse=False):
             import scipy.sparse
             fs=open(filename,"r")
             yearsread=False
@@ -15,31 +15,42 @@ class SwarmData(object):
                         self.years=[float(i) for i in line.split()]
                         yearsread=True;
                         #init arrays
-                        self.gcoefsdict=numpy.zeros((self,ntimes,self.nmax+1,self.nmax+1))
-                        self.hcoefsdict=self.gcoefsdict.copy()
+                        if(sparse):
+                            self.g=scipy.sparse.csc_matrix(shape=(self.ntimes,self.nmax+1,self.nmax+1))
+                            self.h=self.g.copy()
+                        else:
+                            self.g=numpy.zeros((self.ntimes,self.nmax+1,self.nmax+1))
+                            self.h=self.g.copy()
                     else:
                         elems=line.split()
                         l=int(elems[0])
                         m=int(elems[1])
                         values=elems[2:]
                         if m < 0:
-                            for y,v in zip(self.years,values):
-                                self.hcoefsdict[y][-m,l]=v
+                            for y,v,i in zip(self.years,values,range(self.ntimes)):
+                                self.h[i,-m,l]=float(v)
                         else:
-                            for y,v in zip(self.years,values):
-                                self.gcoefsdict[y][m,l]=v
+                            for y,v,i in zip(self.years,values,range(self.ntimes)):
+                                self.g[i,m,l]=float(v)
 
-    def interpolated(times):
+    def interpolated(self,times):
         shape=(self.nmax+1,self.nmax+1)
-        g=numpy.zeros((self.ntimes,*shape)) #ahora es 3D (t,m,l)
-        h=g.copy() #hard copy
+        gint=numpy.zeros((len(times),*shape)) #ahora es 3D (t,m,l)
+        hint=gint.copy() #hard copy
+        t=numpy.array(self.years)
 
-        for i,t in zip(range(len(times)),times):
-            if t in self.gcoefsdict:
-                pass
+        for m in range(self.nmax+1):
+            for l in range(self.nmax+1):
+                gy=self.g[:,m,l]
+                hy=self.h[:,m,l]               
+                ginterpolant=scipy.interpolate.InterpolatedUnivariateSpline(t,gy)
+                hinterpolant=scipy.interpolate.InterpolatedUnivariateSpline(t,hy)
 
-        
-                        
+                gint[:,m,l]=ginterpolant(numpy.array(times))
+                hint[:,m,l]=hinterpolant(numpy.array(times))
+                
+        return gint,hint
+
     
 
 def interpolatecoefs(times,gcoefsd,hcoefsd):

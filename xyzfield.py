@@ -4,6 +4,13 @@ import scipy.misc
 import numpy
 import sys
 
+    #esto es un poco el mal
+def umap(callable, thing):
+    if(hasattr(thing, "__iter__")):
+        return list(map(callable, thing))
+    else:
+        return [callable(thing)]
+
 def load(filename):
     fs=open(filename,"r")
     gcoefs=numpy.zeros((19,19))
@@ -36,6 +43,7 @@ def loadyear(filename, years=(0,), sparse=True):
         if not line.startswith("#"):
             if not yearsread:
                 #hacccck (saltarse una línea con numeros misteriosos)
+                nmin,nmax,ntimes,spline_order,nstep=line.split()[:5]
                 line=fs.readline()
                 yeardates=[list(map(float,line.split()))[i] for i in years]
                 yearsread=True
@@ -100,13 +108,6 @@ def xyzfieldv(gcoefs,hcoefs,phiv,thetav,rparam=1.0,order=13):
     x=numpy.zeros_like(thetagrid)
     y=numpy.zeros_like(thetagrid)
     z=numpy.zeros_like(thetagrid)
-
-    #evil stuff
-    def umap(callable, thing):
-        if(hasattr(thing, "__iter__")):
-            return list(map(callable, thing))
-        else:
-            return [callable(thing)]
         
     #matriz de normalización de schmidt
     lgrid,mgrid=scipy.meshgrid(numpy.arange(0,order+1),numpy.arange(0,order+1))
@@ -133,7 +134,7 @@ def xyzfieldv(gcoefs,hcoefs,phiv,thetav,rparam=1.0,order=13):
 def xyztime(gcoefsdict,hcoefsdict,phi,theta,t,rparam=1.0,order=13):
     """
     returns the x,y,z components of the field at coordinates or coordinate vectors phi and theta, at time t
-    as given by measured or linearly interpolated dataaaaaAAAAAAAA as appropiate
+    as given by measured or linearly interpolated data as appropiate
     """
     return xyzfieldv(*ghinterp(gcoefsdict, hcoefsdict, t), phi, theta, rparam, order)
 
@@ -188,14 +189,12 @@ def xyzplot(theta,phi,x,y,z,vmin=-70000, vmax=70000):
     cplot=axis3.pcolor(xtrans,ytrans,numpy.rot90(z),vmin=vmin,vmax=vmax)
  
     pyplot.colorbar(mappable=cplot,orientation="vertical",ax=[axis1,axis2,axis3],aspect=40,format="%1.0f nT")
-
-    fig.show()
-
+#   fig.show()
     return fig
 
 def plotfield(filename="MCO_2C.DBL", resolution=(200,200), rparam=1.0, order=13, projection="cyl", vmin=-70000, vmax=+70000):
     """
-    plot the magnetic fiEEEEEEELD
+    plot the magnetic field
     """
     from matplotlib import pyplot
     from mpl_toolkits.basemap import Basemap
