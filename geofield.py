@@ -1,4 +1,5 @@
 import numpy
+from xyzfield import xyzfieldv #eliminar esta dependencia
 import scipy, scipy.sparse, scipy.interpolate
 
 class SwarmData(object):
@@ -43,15 +44,39 @@ class SwarmData(object):
             for l in range(self.nmax+1):
                 gy=self.g[:,m,l]
                 hy=self.h[:,m,l]               
-                ginterpolant=scipy.interpolate.InterpolatedUnivariateSpline(t,gy)
-                hinterpolant=scipy.interpolate.InterpolatedUnivariateSpline(t,hy)
+                ginterpolant=scipy.interpolate.InterpolatedUnivariateSpline(t,gy,k=5)
+                hinterpolant=scipy.interpolate.InterpolatedUnivariateSpline(t,hy,k=5)
 
                 gint[:,m,l]=ginterpolant(numpy.array(times))
                 hint[:,m,l]=hinterpolant(numpy.array(times))
                 
         return gint,hint
 
-    
+    def secularvariation(self,times,interval=0.5,phiv=scipy.linspace(0.0,scipy.pi*2,100),thetav=scipy.linspace(0.01,scipy.pi-0.01,100),rparam=1.0):
+        lowt=times-numpy.array(interval)
+        hight=times+numpy.array(interval)
+
+        timepairs=[(l,h) for l,h in zip(lowt,hight) if (l >= min(self.years) and h <= max(self.years))]
+
+        g_high,h_high=self.interpolated([p[1] for p in timepairs])
+        g_low,h_low=self.interpolated([p[0] for p in timepairs])
+
+        diffs=[]
+
+        for p,i in zip(timepairs,range(len(timepairs))):
+
+            highx,highy,highz=xyzfieldv(g_high[i],h_high[i],phiv,thetav,rparam)
+            lowx,lowy,lowz=xyzfieldv(g_low[i],h_low[i],phiv,thetav,rparam)
+
+            diffx=(highx-lowx)/(p[1]-p[0])
+            diffy=(highy-lowy)/(p[1]-p[0])
+            diffz=(highy-lowy)/(p[1]-p[0])
+
+            diffs.append((diffx,diffy,diffz))
+
+        return numpy.array(diffs)
+        
+        
 
 def interpolatecoefs(times,gcoefsd,hcoefsd):
     """
