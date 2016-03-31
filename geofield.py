@@ -56,7 +56,8 @@ class SwarmData(object):
         lowt=times-numpy.array(interval)
         hight=times+numpy.array(interval)
 
-        timepairs=[(l,h) for l,h in zip(lowt,hight) if (l >= min(self.years) and h <= max(self.years))]
+        timepairs=[(l,h,t) for l,h,t in zip(lowt,hight,times) if (l >= min(self.years) and h <= max(self.years))]
+        validtimes=[p[2] for p in timepairs]
 
         g_high,h_high=self.interpolated([p[1] for p in timepairs])
         g_low,h_low=self.interpolated([p[0] for p in timepairs])
@@ -74,16 +75,16 @@ class SwarmData(object):
 
             diffs.append((diffx,diffy,diffz))
 
-        return numpy.array(diffs)
+        return validtimes,numpy.array(diffs)
         
 def locationfield(lat,lon,x,y,z,phiv,thetav):
 
     theta=scipy.pi/2-numpy.deg2rad(lat)
     phi=numpy.deg2rad(lon)
 
-    x_atlocation=scipy.interpolate.inqterp2d(phiv,thetav,x,kind="linear")(phi,theta)
-    y_atlocation=scipy.interpolate.interp2d(phiv,thetav,y,kind="linear")(phi,theta)
-    z_atlocation=scipy.interpolate.interp2d(phiv,thetav,z,kind="linear")(phi,theta)
+    x_atlocation=scipy.interpolate.interp2d(thetav,phiv,x,kind="linear")(theta,phi)
+    y_atlocation=scipy.interpolate.interp2d(thetav,phiv,y,kind="linear")(theta,phi)
+    z_atlocation=scipy.interpolate.interp2d(thetav,phiv,z,kind="linear")(theta,phi)
     
     return numpy.array((x_atlocation,y_atlocation,z_atlocation))
 

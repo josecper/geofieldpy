@@ -104,14 +104,15 @@ def xyzfieldv(gcoefs,hcoefs,phiv,thetav,rparam=1.0,order=13):
     if phiv and thetav are scalars, (x,y,z) will be a tuple of scalars instead.
     """
     #función pseudo-universal sobre phiv,thetav gracias a la magia negra
-    thetagrid,phigrid=numpy.meshgrid(thetav,phiv)
+    thetagrid,phigrid=numpy.meshgrid(thetav,phiv,indexing="xy")
+
     x=numpy.zeros_like(thetagrid)
     y=numpy.zeros_like(thetagrid)
     z=numpy.zeros_like(thetagrid)
         
     #matriz de normalización de schmidt
-    lgrid,mgrid=scipy.meshgrid(numpy.arange(0,order+1),numpy.arange(0,order+1))
-    schmidt=scipy.sqrt((2-numpy.equal(mgrid,0))*scipy.misc.factorial(lgrid-mgrid)/scipy.misc.factorial(lgrid+mgrid))
+    lgrid,mgrid=scipy.meshgrid(numpy.arange(0,order+1),numpy.arange(0,order+1),indexing="xy")
+    schmidt=(-1)**mgrid*scipy.sqrt((2-numpy.equal(mgrid,0))*scipy.misc.factorial(lgrid-mgrid)/scipy.misc.factorial(lgrid+mgrid))
     #precalcular las funciones de legendre
     legendre=numpy.array(umap(lambda x:numpy.multiply(scipy.special.lpmn(order,order,x),(schmidt,schmidt)), scipy.cos(thetav)))
     #polinomios
@@ -129,7 +130,7 @@ def xyzfieldv(gcoefs,hcoefs,phiv,thetav,rparam=1.0,order=13):
     if(x.shape == (1,1)):
         return (x.flat[0], y.flat[0], z.flat[0])
     else:
-        return(x,y,z)
+        return (x,y,z)
 
 def xyztime(gcoefsdict,hcoefsdict,phi,theta,t,rparam=1.0,order=13):
     """
@@ -162,7 +163,58 @@ def ghinterp(gcoefsdict,hcoefsdict,t):
     return (g,h)
 
 
-def xyzplot(theta,phi,x,y,z,vmin=-70000, vmax=70000):
+def xyzcontour(theta,phi,x,y,z,vmin=None,vmax=None,cmap="bwr",projection="robin"):
+
+    from matplotlib import pyplot
+    from mpl_toolkits.basemap import Basemap
+
+    if projection=="cyl":
+        base=Basemap(projection="cyl",
+                     llcrnrlat=90-scipy.rad2deg(max(theta)),
+                     urcrnrlat=90-scipy.rad2deg(min(theta)),
+                     llcrnrlon=scipy.rad2deg(min(phi)),
+                     urcrnrlon=scipy.rad2deg(max(phi)),
+                     #llcrnrlat=-90, urcrnrlat=90,llcrnrlon=-180,urcrnrlon=180,
+                     resolution="l")
+    elif projection=="robin":
+        base=Basemap(projection="robin",
+                     lon_0=0.0)
+    else: raise Exception("bad projection :'(")
+
+    xtrans=numpy.rad2deg(phi)
+    ytrans=90-numpy.rad2deg(theta)
+
+    fig=pyplot.figure(figsize=(10,13))
+    axis1=fig.add_subplot(311);axis1.set_title("X")
+    axis2=fig.add_subplot(312);axis2.set_title("Y")
+    axis3=fig.add_subplot(313);axis3.set_title("Z")
+
+    for a in (axis1,axis2,axis3):
+        base.drawcoastlines(ax=a)
+        base.drawparallels(numpy.arange(-60.,90.,30.),ax=a)
+        base.drawmeridians(numpy.arange(0.,420.,60.),labels=[0,0,0,1],fontsize=10,ax=a)
+        base.drawmapboundary(ax=a)
+    
+    pyplot.set_cmap(cmap)
+
+    xx,yy=numpy.meshgrid(xtrans,ytrans)
+
+    if (not vmin or not vmax):
+        xmax=numpy.max(numpy.abs(x))
+        ymax=numpy.max(numpy.abs(y))
+        zmax=numpy.max(numpy.abs(z))          
+        base.contourf(xx,yy,x.transpose(),31,latlon=True,ax=axis1,vmin=-xmax,vmax=xmax)
+        base.contourf(xx,yy,y.transpose(),31,latlon=True,ax=axis2,vmin=-ymax,vmax=ymax)
+        base.contourf(xx,yy,z.transpose(),31,latlon=True,ax=axis3,vmin=-zmax,vmax=zmax)
+    else:
+        base.contourf(xx,yy,x.transpose(),31,latlon=True,ax=axis1,vmin=vmin,vmax=vmax)
+        base.contourf(xx,yy,y.transpose(),31,latlon=True,ax=axis2,vmin=vmax,vmax=vmax)
+        base.contourf(xx,yy,z.transpose(),31,latlon=True,ax=axis3,vmin=vmax,vmax=vmax)
+        
+    return fig
+                 
+
+def xyzplot(theta,phi,x,y,z,vmin=-70000, vmax=70000,cmap="bwr"):
     """
     plots the x,y, and z components of the magnetic field in three separate color plots, over
     a world map in cylindrical equidistant projection, given point coordinate vectors theta and phi
@@ -171,9 +223,22 @@ def xyzplot(theta,phi,x,y,z,vmin=-70000, vmax=70000):
     from matplotlib import pyplot
     from mpl_toolkits.basemap import Basemap
 
-    base=Basemap(projection="cyl", llcrnrlat=-90, urcrnrlat=90, llcrnrlon=-180, urcrnrlon=180, resolution="l")
-    xtrans=numpy.rad2deg(phi)-180
-    ytrans=numpy.rad2deg(theta)-90
+    base=Basemap(projection="cyl",
+                 llcrnrlat=90-scipy.rad2deg(max(theta)),
+                 urcrnrlat=90-scipy.rad2deg(min(theta)),
+                 llcrnrlon=scipy.rad2deg(min(phi)),
+                 urcrnrlon=scipy.rad2deg(max(phi)),
+                 #llcrnrlat=-90, urcrnrlat=90,llcrnrlon=-180,urcrnrlon=180,
+                 resolution="l")
+    
+    #xtrans=numpy.rad2deg(phi)-180
+    #ytrans=numpy.rad2deg(theta)-90
+
+    #xtrans=numpy.rad2deg(phi)
+    #ytrans=90-numpy.rad2deg(theta)
+
+    ytrans=90-numpy.rad2deg(theta)
+    xtrans=numpy.rad2deg(phi)
     fig=pyplot.figure(figsize=(10,13))
     axis1=fig.add_subplot(311);axis1.set_title("X")
     axis2=fig.add_subplot(312);axis2.set_title("Y")
@@ -183,11 +248,15 @@ def xyzplot(theta,phi,x,y,z,vmin=-70000, vmax=70000):
     base.drawcoastlines(ax=axis2)
     base.drawcoastlines(ax=axis3)
 
-    pyplot.set_cmap("viridis")
-    axis1.pcolor(xtrans,ytrans,numpy.rot90(x),vmin=vmin,vmax=vmax)
-    axis2.pcolor(xtrans,ytrans,numpy.rot90(y),vmin=vmin,vmax=vmax)
-    cplot=axis3.pcolor(xtrans,ytrans,numpy.rot90(z),vmin=vmin,vmax=vmax)
- 
+    pyplot.set_cmap(cmap)
+    #axis1.pcolor(xtrans,ytrans,numpy.rot90(x),vmin=vmin,vmax=vmax)
+    #axis2.pcolor(xtrans,ytrans,numpy.rot90(y),vmin=vmin,vmax=vmax)
+    #cplot=axis3.pcolor(xtrans,ytrans,numpy.rot90(z),vmin=vmin,vmax=vmax)
+
+    axis1.pcolormesh(xtrans,ytrans,x.transpose(),vmin=vmin,vmax=vmax,shading="gouraud")
+    axis2.pcolormesh(xtrans,ytrans,y.transpose(),vmin=vmin,vmax=vmax,shading="gouraud")
+    cplot=axis3.pcolormesh(xtrans,ytrans,z.transpose(),vmin=vmin,vmax=vmax,shading="gouraud")
+    
     pyplot.colorbar(mappable=cplot,orientation="vertical",ax=[axis1,axis2,axis3],aspect=40,format="%1.0f nT")
 #   fig.show()
     return fig
