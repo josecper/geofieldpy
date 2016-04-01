@@ -203,9 +203,9 @@ def xyzcontour(theta,phi,x,y,z,vmin=None,vmax=None,cmap="bwr",projection="robin"
         xmax=numpy.max(numpy.abs(x))
         ymax=numpy.max(numpy.abs(y))
         zmax=numpy.max(numpy.abs(z))          
-        base.contourf(xx,yy,x.transpose(),31,latlon=True,ax=axis1,vmin=-xmax,vmax=xmax)
-        base.contourf(xx,yy,y.transpose(),31,latlon=True,ax=axis2,vmin=-ymax,vmax=ymax)
-        base.contourf(xx,yy,z.transpose(),31,latlon=True,ax=axis3,vmin=-zmax,vmax=zmax)
+        m=base.contourf(xx,yy,x.transpose(),31,latlon=True,ax=axis1,vmin=-xmax,vmax=xmax);base.colorbar(mappable=m,ax=axis1)
+        m=base.contourf(xx,yy,y.transpose(),31,latlon=True,ax=axis2,vmin=-ymax,vmax=ymax);base.colorbar(mappable=m,ax=axis2)
+        m=base.contourf(xx,yy,z.transpose(),31,latlon=True,ax=axis3,vmin=-zmax,vmax=zmax);base.colorbar(mappable=m,ax=axis3)
     else:
         base.contourf(xx,yy,x.transpose(),31,latlon=True,ax=axis1,vmin=vmin,vmax=vmax)
         base.contourf(xx,yy,y.transpose(),31,latlon=True,ax=axis2,vmin=vmax,vmax=vmax)

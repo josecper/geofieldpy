@@ -76,7 +76,34 @@ class SwarmData(object):
             diffs.append((diffx,diffy,diffz))
 
         return validtimes,numpy.array(diffs)
-        
+
+    def secularacceleration(self,times,interval=0.5,phiv=scipy.linspace(0.0,scipy.pi*2,100),thetav=scipy.linspace(0.01,scipy.pi-0.01,100),rparam=1.0):
+        lowt=times-numpy.array(interval)
+        hight=times+numpy.array(interval)
+
+        timepairs=[(l,h,t) for l,h,t in zip(lowt,hight,times) if (l >= min(self.years) and h <= max(self.years))]
+        validtimes=[p[2] for p in timepairs]
+
+        g_high,h_high=self.interpolated([p[1] for p in timepairs])
+        g_current,h_current=self.interpolated([p[2] for p in timepairs])
+        g_low,h_low=self.interpolated([p[0] for p in timepairs])
+
+        accs=[]
+
+        for p,i in zip(timepairs,range(len(timepairs))):
+
+            highx,highy,highz=xyzfieldv(g_high[i],h_high[i],phiv,thetav,rparam)
+            lowx,lowy,lowz=xyzfieldv(g_low[i],h_low[i],phiv,thetav,rparam)
+            currentx,currenty,currentz=xyzfieldv(g_current[i],h_current[i],phiv,thetav,rparam)
+
+            accx=(lowx-2*currentx+highx)/((p[2]-p[0])*(p[1]-p[2]))
+            accy=(lowy-2*currenty+highy)/((p[2]-p[0])*(p[1]-p[2]))
+            accz=(lowz-2*currentz+highz)/((p[2]-p[0])*(p[1]-p[2]))
+
+            accs.append((accx,accy,accz))
+
+        return validtimes,numpy.array(accs)
+    
 def locationfield(lat,lon,x,y,z,phiv,thetav):
 
     theta=scipy.pi/2-numpy.deg2rad(lat)
@@ -87,37 +114,3 @@ def locationfield(lat,lon,x,y,z,phiv,thetav):
     z_atlocation=scipy.interpolate.interp2d(thetav,phiv,z,kind="linear")(theta,phi)
     
     return numpy.array((x_atlocation,y_atlocation,z_atlocation))
-
-    
-def interpolatecoefs(times,gcoefsd,hcoefsd):
-    """
-    gcoefsd = dictionary of { float : m*l float64 array }
-    hcoefsd = same
-    times = array of years
-
-    returns g,h : t.shape*m*l
-    """
-
-    s=(next(iter(gcoefsd.values()))).shape
-    g=numpy.zeros((len(times),s[0],s[1]))
-    h=g.copy()
-    
-    for i,t in zip(range(len(times)),times):
-        if t in gcoefsd:
-            g[i,:,:]=gcoefsd[t].toarray()
-            h[i,:,:]=hcoefsd[t].toarray()
-        else:
-            prev_time=max([y for y in gcoefsd.keys() if y < t])
-            prev_g=gcoefsd[prev_time]
-            prev_h=hcoefsd[prev_time]
-
-            next_time=min([y for y in gcoefsd.keys() if y > t])
-            next_g=gcoefsd[next_time]
-            next_h=hcoefsd[next_time]
-
-            interpolant=(t-prev_time)/(next_time-prev_time)
-
-            g[i,:,:]=(interpolant*next_g+(1-interpolant)*prev_g).toarray()
-            h[i,:,:]=(interpolant*next_h+(1-interpolant)*prev_h).toarray()
-
-    return g,h
