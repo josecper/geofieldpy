@@ -4,7 +4,10 @@ import scipy.misc
 import numpy
 import sys
 
+
     #esto es un poco el mal
+
+    
 def umap(callable, thing):
     if(hasattr(thing, "__iter__")):
         return list(map(callable, thing))
@@ -12,9 +15,9 @@ def umap(callable, thing):
         return [callable(thing)]
 
 def load(filename):
-    fs=open(filename,"r")
-    gcoefs=numpy.zeros((19,19))
-    hcoefs=numpy.zeros((19,19))
+    fs=open(filename, "r")
+    gcoefs=numpy.zeros((19, 19))
+    hcoefs=numpy.zeros((19, 19))
     
     for line in fs.readlines()[5:]:
         elems=line.split()
@@ -132,6 +135,21 @@ def xyzfieldv(gcoefs,hcoefs,phiv,thetav,rparam=1.0,order=13):
     else:
         return (x,y,z)
 
+def xyz2dif(x,y,z,units="radians"):
+
+    xysquared=x**2+y**2
+
+    declination=numpy.arctan2(y,x)
+    inclination=numpy.arctan2(z,numpy.sqrt(xysquared))
+
+    if units=="degrees":
+        declination=numpy.rad2deg(declination)
+        inclination=numpy.rad2deg(inclination)
+    
+    intensity=numpy.sqrt(xysquared+z**2)
+
+    return declination,inclination,intensity
+    
 def xyztime(gcoefsdict,hcoefsdict,phi,theta,t,rparam=1.0,order=13):
     """
     returns the x,y,z components of the field at coordinates or coordinate vectors phi and theta, at time t
@@ -163,9 +181,9 @@ def ghinterp(gcoefsdict,hcoefsdict,t):
     return (g,h)
 
 
-def xyzcontour(theta,phi,x,y,z,vmin=None,vmax=None,cmap="bwr",projection="robin"):
+def xyzcontour(theta,phi,x,y,z,vmin=None,vmax=None,cmap="bwr",projection="robin",mode="xyz",units="nT",time=None,string="{0}"):
 
-    from matplotlib import pyplot
+    from matplotlib import pyplot, colors
     from mpl_toolkits.basemap import Basemap
 
     if projection=="cyl":
@@ -185,31 +203,55 @@ def xyzcontour(theta,phi,x,y,z,vmin=None,vmax=None,cmap="bwr",projection="robin"
     ytrans=90-numpy.rad2deg(theta)
 
     fig=pyplot.figure(figsize=(10,13))
-    axis1=fig.add_subplot(311);axis1.set_title("X")
-    axis2=fig.add_subplot(312);axis2.set_title("Y")
-    axis3=fig.add_subplot(313);axis3.set_title("Z")
+    axis1=fig.add_subplot(311);axis1.set_title(string.format("X",str(time)))
+    axis2=fig.add_subplot(312);axis2.set_title(string.format("Y",str(time)))
+    axis3=fig.add_subplot(313);axis3.set_title(string.format("Z",str(time)))
 
     for a in (axis1,axis2,axis3):
         base.drawcoastlines(ax=a)
         base.drawparallels(numpy.arange(-60.,90.,30.),ax=a)
         base.drawmeridians(numpy.arange(0.,420.,60.),labels=[0,0,0,1],fontsize=10,ax=a)
         base.drawmapboundary(ax=a)
-    
-    pyplot.set_cmap(cmap)
+
+    if mode == "dif":
+        xycmap=colors.LinearSegmentedColormap(
+            "crisisperrotini",
+            segmentdata={
+                "red":[(0.0, 0.0, 0.0),
+                       (0.5, 1.0, 1.0),
+                       (0.75,1.0, 1.0),
+                       (1.0, 0.0, 0.0)],
+                "green":[(0.0, 0.0, 0.0),
+                         (0.5, 1.0, 1.0),
+                         (1.0, 0.0, 0.0)],
+                "blue":[(0.0, 0.0, 0.0),
+                        (0.25, 1.0, 1.0),
+                        (0.5, 1.0, 1.0),
+                        (1.0, 0.0, 0.0)]
+            })
+        zcmap=cmap
+    else:
+        xycmap=zcmap=cmap
 
     xx,yy=numpy.meshgrid(xtrans,ytrans)
-
+    
     if (not vmin or not vmax):
         xmax=numpy.max(numpy.abs(x))
         ymax=numpy.max(numpy.abs(y))
         zmax=numpy.max(numpy.abs(z))          
-        m=base.contourf(xx,yy,x.transpose(),31,latlon=True,ax=axis1,vmin=-xmax,vmax=xmax);base.colorbar(mappable=m,ax=axis1)
-        m=base.contourf(xx,yy,y.transpose(),31,latlon=True,ax=axis2,vmin=-ymax,vmax=ymax);base.colorbar(mappable=m,ax=axis2)
-        m=base.contourf(xx,yy,z.transpose(),31,latlon=True,ax=axis3,vmin=-zmax,vmax=zmax);base.colorbar(mappable=m,ax=axis3)
+        m=base.contourf(xx,yy,x.transpose(),31,latlon=True,ax=axis1,vmin=-xmax,vmax=xmax,cmap=xycmap)
+        cbar=base.colorbar(mappable=m,ax=axis1)
+        cbar.set_label(units)
+        m=base.contourf(xx,yy,y.transpose(),31,latlon=True,ax=axis2,vmin=-ymax,vmax=ymax,cmap=xycmap)
+        cbar=base.colorbar(mappable=m,ax=axis2)
+        cbar.set_label(units)        
+        m=base.contourf(xx,yy,z.transpose(),31,latlon=True,ax=axis3,vmin=-zmax,vmax=zmax,cmap=zcmap);
+        cbar=base.colorbar(mappable=m,ax=axis3)
+        cbar.set_label(units)
     else:
-        base.contourf(xx,yy,x.transpose(),31,latlon=True,ax=axis1,vmin=vmin,vmax=vmax)
-        base.contourf(xx,yy,y.transpose(),31,latlon=True,ax=axis2,vmin=vmax,vmax=vmax)
-        base.contourf(xx,yy,z.transpose(),31,latlon=True,ax=axis3,vmin=vmax,vmax=vmax)
+        base.contourf(xx,yy,x.transpose(),31,latlon=True,ax=axis1,vmin=vmin,vmax=vmax,cmap=xycmap)
+        base.contourf(xx,yy,y.transpose(),31,latlon=True,ax=axis2,vmin=vmax,vmax=vmax,cmap=xycmap)
+        base.contourf(xx,yy,z.transpose(),31,latlon=True,ax=axis3,vmin=vmax,vmax=vmax,cmap=zcmap)
         
     return fig
                  
