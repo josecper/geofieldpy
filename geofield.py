@@ -2,37 +2,7 @@ import numpy
 from xyzfield import xyzfieldv #eliminar esta dependencia
 import scipy, scipy.sparse, scipy.interpolate
 
-class SwarmData(object):
-
-    def __init__(self,filename,sparse=False):
-            import scipy.sparse
-            fs=open(filename,"r")
-            yearsread=False
-            for line in fs:
-                if not line.startswith("#"):
-                    if not yearsread:
-                        self.nmin,self.nmax,self.ntimes,self.spline_order,self.nstep=(int(x) for x in line.split()[:5])
-                        line=fs.readline()
-                        self.years=[float(i) for i in line.split()]
-                        yearsread=True;
-                        #init arrays
-                        if(sparse):
-                            self.g=scipy.sparse.csc_matrix(shape=(self.ntimes,self.nmax+1,self.nmax+1))
-                            self.h=self.g.copy()
-                        else:
-                            self.g=numpy.zeros((self.ntimes,self.nmax+1,self.nmax+1))
-                            self.h=self.g.copy()
-                    else:
-                        elems=line.split()
-                        l=int(elems[0])
-                        m=int(elems[1])
-                        values=elems[2:]
-                        if m < 0:
-                            for y,v,i in zip(self.years,values,range(self.ntimes)):
-                                self.h[i,-m,l]=float(v)
-                        else:
-                            for y,v,i in zip(self.years,values,range(self.ntimes)):
-                                self.g[i,m,l]=float(v)
+class GaussCoefficientsData(object):
 
     def interpolated(self,times):
         shape=(self.nmax+1,self.nmax+1)
@@ -103,6 +73,79 @@ class SwarmData(object):
             accs.append((accx,accy,accz))
 
         return validtimes,numpy.array(accs)
+
+
+class SwarmData(GaussCoefficientsData):
+
+    def __init__(self,filename,sparse=False):
+        import scipy.sparse
+        fs=open(filename,"r")
+        yearsread=False
+        for line in fs:
+            if not line.startswith("#"):
+                if not yearsread:
+                    self.nmin,self.nmax,self.ntimes,self.spline_order,self.nstep=(int(x) for x in line.split()[:5])
+                    line=fs.readline()
+                    self.years=[float(i) for i in line.split()]
+                    yearsread=True;
+                    #init arrays
+                    if(sparse):
+                        self.g=scipy.sparse.csc_matrix(shape=(self.ntimes,self.nmax+1,self.nmax+1))
+                        self.h=self.g.copy()
+                    else:
+                        self.g=numpy.zeros((self.ntimes,self.nmax+1,self.nmax+1))
+                        self.h=self.g.copy()
+                else:
+                    elems=line.split()
+                    l=int(elems[0])
+                    m=int(elems[1])
+                    values=elems[2:]
+                    if m < 0:
+                        for y,v,i in zip(self.years,values,range(self.ntimes)):
+                            self.h[i,-m,l]=float(v)
+                    else:
+                        for y,v,i in zip(self.years,values,range(self.ntimes)):
+                            self.g[i,m,l]=float(v)
+
+class ChaosData(GaussCoefficientsData):
+
+    def __init__(self,filename,sparse=False):
+
+        import scipy.sparse
+        fs = open(filename, "r")
+
+        self.years = [float(i) for i in fs.readline().split()]
+        self.ntimes = len(self.years)
+        self.nmin = 1; self.nmax = 20
+
+        if sparse:
+            self.g = scipy.sparse.csc_matrix(shape=(self.ntimes, self.nmax+1, self.nmax+1))
+            self.h = self.g.copy()
+        else:
+            self.g = numpy.zeros((self.ntimes, self.nmax+1, self.nmax+1))
+            self.h = self.g.copy()
+
+        orders=[]
+        for l in range(self.nmin,self.nmax+1):
+            for m in range(0,l+1):
+                if m == 0:
+                    orders.append((l,m))
+                else:
+                    orders.append((l,m))
+                    orders.append((l,-m))
+            
+        for order, line in zip(orders,fs):
+            values=[float(v) for v in line.split()]
+            l,m=order
+            #print(l,m)
+            if m < 0:
+                self.h[:,-m,l] = numpy.array(values)
+            else:
+                self.g[:,m,l] = numpy.array(values)
+            if l >= self.nmax:
+                break
+
+    
     
 def locationfield(lat,lon,x,y,z,phiv,thetav):
 

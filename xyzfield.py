@@ -250,8 +250,8 @@ def xyzcontour(theta,phi,x,y,z,vmin=None,vmax=None,cmap="bwr",projection="robin"
         cbar.set_label(units)
     else:
         base.contourf(xx,yy,x.transpose(),31,latlon=True,ax=axis1,vmin=vmin,vmax=vmax,cmap=xycmap)
-        base.contourf(xx,yy,y.transpose(),31,latlon=True,ax=axis2,vmin=vmax,vmax=vmax,cmap=xycmap)
-        base.contourf(xx,yy,z.transpose(),31,latlon=True,ax=axis3,vmin=vmax,vmax=vmax,cmap=zcmap)
+        base.contourf(xx,yy,y.transpose(),31,latlon=True,ax=axis2,vmin=vmin,vmax=vmax,cmap=xycmap)
+        base.contourf(xx,yy,z.transpose(),31,latlon=True,ax=axis3,vmin=vmin,vmax=vmax,cmap=zcmap)
         
     return fig
                  
