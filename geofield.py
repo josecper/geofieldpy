@@ -22,6 +22,35 @@ class GaussCoefficientsData(object):
                 
         return gint,hint
 
+    def field_at_location(self, lat, lon, times=None, field="f", rparam=1.0):
+
+        if times == None:
+            times=numpy.array(self.years)
+        
+        thetav=numpy.array([scipy.pi/2-numpy.deg2rad(lat)])
+        phiv=numpy.array([numpy.deg2rad(lon)])
+        
+        if field == "f":
+
+            xyz = numpy.zeros((len(times),3))
+            g,h=self.interpolated(times)
+            
+            for t,i in zip(times,range(len(times))):
+                xyz[i,:]=numpy.array(xyzfieldv(g[i],h[i],phiv,thetav,rparam))
+            return times, xyz[:,0], xyz[:,1], xyz[:,2]
+
+        elif field == "s":
+
+            vtimes,secular=self.secularvariation(times,interval=0.5,phiv=phiv,thetav=thetav)
+            return vtimes, secular[:,0], secular[:,1], secular[:,2]
+
+        elif field == "a":
+
+            vtimes,acc=self.secularacceleration(times,interval=0.5,phiv=phiv,thetav=thetav)
+            return vtimes, acc[:,0], acc[:,1], acc[:,2]
+
+        else: raise Exception("you did a bad thing :(")
+    
     def secularvariation(self,times,interval=0.5,phiv=scipy.linspace(0.0,scipy.pi*2,100),thetav=scipy.linspace(0.01,scipy.pi-0.01,100),rparam=1.0):
         lowt=times-numpy.array(interval)
         hight=times+numpy.array(interval)
@@ -74,6 +103,32 @@ class GaussCoefficientsData(object):
 
         return validtimes,numpy.array(accs)
 
+    def secular_power(times, interval=10.0/12.0, rparam=1.0):
+
+        lowt=times-numpy.array(interval)
+        hight=times+numpy.array(interval)
+
+        timepairs=[(l,h,t) for l,h,t in zip(lowt,hight,times) if (l >= min(self.years) and h <= max(self.years))]
+        validtimes=[p[2] for p in timepairs]
+               
+        g_high, h_high = self.interpolated([p[1] for p in timepairs])
+        g_current, h_current = self.interpolated([p[2] for p in timepairs])
+        g_low, h_low = self.interpolated([p[0] for p in timepairs])
+
+        accs=[]
+
+        for p in zip(timepairs, range(len(timepairs))):
+
+            g_acc = ((g_low[i]-2*g_current[i]+g_high[i])/((p[2]-p[0])*(p[1]-p[2])))**2
+            h_acc = ((h_low[i]-2*h_current[i]+g_high[i])/((p[2]-p[0])*(p[1]-p[2])))**2
+
+            l_acc = (g_acc+h_acc).sum(axis=0)
+            l_array = numpy.arange(len(l_acc))
+
+            #do more thingg
+        
+        
+            
 
 class SwarmData(GaussCoefficientsData):
 
