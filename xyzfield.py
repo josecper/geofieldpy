@@ -1,6 +1,7 @@
 import scipy
 import scipy.special
 import scipy.misc
+import scipy.interpolate
 import numpy
 import sys
 
@@ -97,7 +98,7 @@ def xyzfield(gcoefs,hcoefs,phi,theta,rparam=1.0,order=13):
             
     return(x,y,z)
 
-def xyzfieldv(gcoefs,hcoefs,phiv,thetav,rparam=1.0,order=13):
+def xyzfieldv(gcoefs,hcoefs,phiv,thetav,rparam=1.0,order=13, regular=True):
     """
     returns (x,y,z), a tuple of arrays representing the corresponding components of
     the geomagnetic field over a grid of points given by phiv and thetav, calculated
@@ -107,11 +108,15 @@ def xyzfieldv(gcoefs,hcoefs,phiv,thetav,rparam=1.0,order=13):
     if phiv and thetav are scalars, (x,y,z) will be a tuple of scalars instead.
     """
     #función pseudo-universal sobre phiv,thetav gracias a la magia negra
-    thetagrid,phigrid=numpy.meshgrid(thetav,phiv,indexing="xy")
-
-    x=numpy.zeros_like(thetagrid)
-    y=numpy.zeros_like(thetagrid)
-    z=numpy.zeros_like(thetagrid)
+    if regular:
+        thetagrid,phigrid=numpy.meshgrid(thetav,phiv,indexing="xy")
+        x=numpy.zeros_like(thetagrid)
+        y=numpy.zeros_like(thetagrid)
+        z=numpy.zeros_like(thetagrid)
+    else:
+        x=numpy.zeros_like(thetav)
+        y=numpy.zeros_like(thetav)
+        z=numpy.zeros_like(thetav)
         
     #matriz de normalización de schmidt
     lgrid,mgrid=scipy.meshgrid(numpy.arange(0,order+1),numpy.arange(0,order+1),indexing="xy")
@@ -122,13 +127,21 @@ def xyzfieldv(gcoefs,hcoefs,phiv,thetav,rparam=1.0,order=13):
     plegendre=legendre[:,0,:,:]
     #derivadas
     dlegendre=legendre[:,1,:,:]
-    
-    for l in range(1,order+1):
-        rparamexp=rparam**(l+2)
-        for m in range(0,l+1):
-            x+=rparamexp*(gcoefs[m,l]*scipy.cos(m*phigrid)+hcoefs[m,l]*scipy.sin(m*phigrid))*dlegendre[:,m,l]*(-scipy.sin(thetagrid))
-            y+=rparamexp*(gcoefs[m,l]*scipy.sin(m*phigrid)-hcoefs[m,l]*scipy.cos(m*phigrid))*m*plegendre[:,m,l]/(scipy.sin(thetagrid))
-            z-=rparamexp*(l+1)*(gcoefs[m,l]*scipy.cos(m*phigrid)+hcoefs[m,l]*scipy.sin(m*phigrid))*plegendre[:,m,l]
+
+    if regular:
+        for l in range(1,order+1):
+            rparamexp=rparam**(l+2)
+            for m in range(0,l+1):
+                x+=rparamexp*(gcoefs[m,l]*scipy.cos(m*phigrid)+hcoefs[m,l]*scipy.sin(m*phigrid))*dlegendre[:,m,l]*(-scipy.sin(thetagrid))
+                y+=rparamexp*(gcoefs[m,l]*scipy.sin(m*phigrid)-hcoefs[m,l]*scipy.cos(m*phigrid))*m*plegendre[:,m,l]/(scipy.sin(thetagrid))
+                z-=rparamexp*(l+1)*(gcoefs[m,l]*scipy.cos(m*phigrid)+hcoefs[m,l]*scipy.sin(m*phigrid))*plegendre[:,m,l]
+    else:
+        for l in range(1, order+1):
+            rparamexp=rparam**(l+2)
+            for m in range(0,l+1):
+                x+=rparamexp*(gcoefs[m,l]*scipy.cos(m*phiv)+hcoefs[m,l]*scipy.sin(m*phiv))*dlegendre[:,m,l]*(-scipy.sin(thetav))
+                y+=rparamexp*(gcoefs[m,l]*scipy.sin(m*phiv)-hcoefs[m,l]*scipy.cos(m*phiv))*m*plegendre[:,m,l]/(scipy.sin(thetav))
+                z-=rparamexp*(l+1)*(gcoefs[m,l]*scipy.cos(m*phiv)+hcoefs[m,l]*scipy.sin(m*phiv))*plegendre[:,m,l]
 
     if(x.shape == (1,1)):
         return (x.flat[0], y.flat[0], z.flat[0])
@@ -181,7 +194,7 @@ def ghinterp(gcoefsdict,hcoefsdict,t):
     return (g,h)
 
 
-def xyzcontour(theta,phi,x,y,z,vmin=None,vmax=None,cmap="bwr",projection="robin",mode="xyz",units="nT",time=None,string="{0}"):
+def xyzcontour(theta,phi,x,y,z,vmin=None,vmax=None,cmap="bwr",projection="robin",mode="xyz",units="nT",time=None,string="{0}",regular=True, resolution=200):
 
     from matplotlib import pyplot, colors
     from mpl_toolkits.basemap import Basemap
@@ -198,6 +211,24 @@ def xyzcontour(theta,phi,x,y,z,vmin=None,vmax=None,cmap="bwr",projection="robin"
         base=Basemap(projection="robin",
                      lon_0=0.0)
     else: raise Exception("bad projection :'(")
+
+    if not regular:
+
+        phinew=scipy.linspace(-numpy.pi, numpy.pi, resolution)
+        thetanew=scipy.linspace(0.01, numpy.pi-0.01, resolution)
+
+        thetagrid, phigrid = scipy.meshgrid(thetanew,phinew, indexing="xy")
+
+        x=scipy.interpolate.griddata((theta,phi), x, (thetagrid,phigrid), method="linear")
+        y=scipy.interpolate.griddata((theta,phi), y, (thetagrid,phigrid), method="linear")
+        z=scipy.interpolate.griddata((theta,phi), z, (thetagrid,phigrid), method="linear")
+
+        x[numpy.isnan(x)] = 0.0
+        y[numpy.isnan(y)] = 0.0
+        z[numpy.isnan(z)] = 0.0
+
+        phi=phinew
+        theta=thetanew
 
     xtrans=numpy.rad2deg(phi)
     ytrans=90-numpy.rad2deg(theta)
