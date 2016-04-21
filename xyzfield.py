@@ -196,6 +196,20 @@ def ghinterp(gcoefsdict,hcoefsdict,t):
 
 def xyzcontour(theta,phi,x,y,z,vmin=None,vmax=None,cmap="bwr",projection="robin",mode="xyz",units="nT",time=None,string="{0}",regular=True, resolution=200):
 
+    """
+    plots scalar fields x,y,z in a world map.
+
+    options:
+    · vmin,vmax : maximum and minimum color scale limits. if set to None, they will be automatically chosen so as to cover the entire data range + be symmetric around zero.
+    · cmap : matplotlib colormap to use
+    · projection : map projection. currently only cylindrical equirectangular ("cyl") and robinson ("robin") projections are supported.
+    · mode: toggles between plotting components normally ("xyz") and treating the last one as an intensity ("dif"), not very polished yet
+    · units: just the colorbar label
+    · time: time for title format string
+    · string: format string, where argument {0} is X,Y,Z and argument {1} is str(time)
+    · regular: whether input coordinates are a regular grid (True, i.e. are vectors of coordinates of shape (n,) (m,) and x,y,z are arrays of shape (n,m), or they are just a set of points (False, i.e. coordinates are of shape (n,) (n,) and x,y,z are arrays of shape (n,)). If set to False, a regular grid (latitude x longitude) will be constructed before plotting, which will be S L O W.
+    · resolution: resolution for the regular grid constructed when input is not regular. Default is 200x200 points.
+    """
     from matplotlib import pyplot, colors
     from mpl_toolkits.basemap import Basemap
 
@@ -291,7 +305,7 @@ def xyzplot(theta,phi,x,y,z,vmin=-70000, vmax=70000,cmap="bwr"):
     """
     plots the x,y, and z components of the magnetic field in three separate color plots, over
     a world map in cylindrical equidistant projection, given point coordinate vectors theta and phi
-    (work in other projections is in progress).    
+    (work in other projections is in progress).
     """    
     from matplotlib import pyplot
     from mpl_toolkits.basemap import Basemap

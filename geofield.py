@@ -4,6 +4,19 @@ import scipy, scipy.sparse, scipy.interpolate
 
 class GaussCoefficientsData(object):
 
+    """
+    +----------------------------------------------------------------------------------+
+    |                                                                                  |
+    +  this is a big giant empty rectancgle                                            +
+    |                                                                                  |
+    |                        nice                                                      |
+    |                                                                                  |
+    |                                                                                  |
+    |                                                                                  |
+    +----------------------------------------------------------------------------------+
+    """
+
+
     def interpolated(self,times):
         shape=(self.nmax+1,self.nmax+1)
         gint=numpy.zeros((len(times),*shape)) #ahora es 3D (t,m,l)
@@ -13,28 +26,28 @@ class GaussCoefficientsData(object):
         for m in range(self.nmax+1):
             for l in range(self.nmax+1):
                 gy=self.g[:,m,l]
-                hy=self.h[:,m,l]               
+                hy=self.h[:,m,l]
                 ginterpolant=scipy.interpolate.InterpolatedUnivariateSpline(t,gy,k=5)
                 hinterpolant=scipy.interpolate.InterpolatedUnivariateSpline(t,hy,k=5)
 
                 gint[:,m,l]=ginterpolant(numpy.array(times))
                 hint[:,m,l]=hinterpolant(numpy.array(times))
-                
+
         return gint,hint
 
     def field_at_location(self, lat, lon, times=None, field="f", rparam=1.0):
 
         if times == None:
             times=numpy.array(self.years)
-        
+
         thetav=numpy.array([scipy.pi/2-numpy.deg2rad(lat)])
         phiv=numpy.array([numpy.deg2rad(lon)])
-        
+
         if field == "f":
 
             xyz = numpy.zeros((len(times),3))
             g,h=self.interpolated(times)
-            
+
             for t,i in zip(times,range(len(times))):
                 xyz[i,:]=numpy.array(xyzfieldv(g[i],h[i],phiv,thetav,rparam))
             return times, xyz[:,0], xyz[:,1], xyz[:,2]
@@ -50,7 +63,7 @@ class GaussCoefficientsData(object):
             return vtimes, acc[:,0], acc[:,1], acc[:,2]
 
         else: raise Exception("you did a bad thing :(")
-    
+
     def secularvariation(self,times,interval=0.5,phiv=scipy.linspace(0.0,scipy.pi*2,100),thetav=scipy.linspace(0.01,scipy.pi-0.01,100),rparam=1.0):
         lowt=times-numpy.array(interval)
         hight=times+numpy.array(interval)
@@ -110,7 +123,7 @@ class GaussCoefficientsData(object):
 
         timepairs=[(l,h,t) for l,h,t in zip(lowt,hight,times) if (l >= min(self.years) and h <= max(self.years))]
         validtimes=[p[2] for p in timepairs]
-               
+
         g_high, h_high = self.interpolated([p[1] for p in timepairs])
         g_current, h_current = self.interpolated([p[2] for p in timepairs])
         g_low, h_low = self.interpolated([p[0] for p in timepairs])
@@ -126,9 +139,9 @@ class GaussCoefficientsData(object):
             l_array = numpy.arange(len(l_acc))
 
             #do more thingg
-        
-        
-            
+
+
+
 
 class SwarmData(GaussCoefficientsData):
 
@@ -188,7 +201,7 @@ class ChaosData(GaussCoefficientsData):
                 else:
                     orders.append((l,m))
                     orders.append((l,-m))
-            
+
         for order, line in zip(orders,fs):
             values=[float(v) for v in line.split()]
             l,m=order
@@ -200,8 +213,8 @@ class ChaosData(GaussCoefficientsData):
             if l >= self.nmax:
                 break
 
-    
-    
+
+
 def locationfield(lat,lon,x,y,z,phiv,thetav):
 
     theta=scipy.pi/2-numpy.deg2rad(lat)
@@ -210,5 +223,5 @@ def locationfield(lat,lon,x,y,z,phiv,thetav):
     x_atlocation=scipy.interpolate.interp2d(thetav,phiv,x,kind="linear")(theta,phi)
     y_atlocation=scipy.interpolate.interp2d(thetav,phiv,y,kind="linear")(theta,phi)
     z_atlocation=scipy.interpolate.interp2d(thetav,phiv,z,kind="linear")(theta,phi)
-    
+
     return numpy.array((x_atlocation,y_atlocation,z_atlocation))
