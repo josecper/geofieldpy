@@ -11,11 +11,11 @@ def grid(n=10000, sort=True):
     · n : number of points
     · sort : sorts points by latitude. useful so basemap doesn't crash.
     """
-    index = numpy.arange(1,n)
+    index = numpy.arange(1,n+1)
     phiv = (ga*index) % (2*numpy.pi)
     phiv -= 2*numpy.pi*(phiv > numpy.pi)
     
-    thetav = numpy.pi/2-scipy.arcsin(-1+2*index/n)
+    thetav = numpy.pi/2-scipy.arcsin(-1+2*index/(n+1))
     if sort:
         sortindex = numpy.argsort(phiv)
         return thetav[sortindex], phiv[sortindex]

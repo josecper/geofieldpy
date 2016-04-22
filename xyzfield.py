@@ -207,7 +207,7 @@ def xyzcontour(theta,phi,x,y,z,vmin=None,vmax=None,cmap="bwr",projection="robin"
     · units: just the colorbar label
     · time: time for title format string
     · string: format string, where argument {0} is X,Y,Z and argument {1} is str(time)
-    · regular: whether input coordinates are a regular grid (True, i.e. are vectors of coordinates of shape (n,) (m,) and x,y,z are arrays of shape (n,m), or they are just a set of points (False, i.e. coordinates are of shape (n,) (n,) and x,y,z are arrays of shape (n,)). If set to False, a regular grid (latitude x longitude) will be constructed before plotting, which will be S L O W.
+    · regular: whether input coordinates are a regular grid (True, i.e. are vectors of coordinates of shape (n,) (m,) and x,y,z are arrays of shape (n,m), or they are just a set of points (False, i.e. coordinates are of shape (n,) (n,) and x,y,z are arrays of shape (n,)). If set to False, a regular grid (latitude x longitude) will be constructed before plotting, which will be S L O W ~ A S ~ H E C K.
     · resolution: resolution for the regular grid constructed when input is not regular. Default is 200x200 points.
     """
     from matplotlib import pyplot, colors
