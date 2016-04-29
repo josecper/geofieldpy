@@ -4,19 +4,6 @@ import scipy, scipy.sparse, scipy.interpolate
 
 class GaussCoefficientsData(object):
 
-    """
-    +----------------------------------------------------------------------------------+
-    |                                                                                  |
-    +  this is a big giant empty rectancgle                                            +
-    |                                                                                  |
-    |                        nice                                                      |
-    |                                                                                  |
-    |                                                                                  |
-    |                                                                                  |
-    +----------------------------------------------------------------------------------+
-    """
-
-
     def interpolated(self,times):
         shape=(self.nmax+1,self.nmax+1)
         gint=numpy.zeros((len(times),*shape)) #ahora es 3D (t,m,l)
@@ -116,7 +103,7 @@ class GaussCoefficientsData(object):
 
         return validtimes,numpy.array(accs)
 
-    def secular_power(times, interval=10.0/12.0, rparam=1.0):
+    def secular_power(self, times, interval=10.0/12.0, rparam=1.0):
 
         lowt=times-numpy.array(interval)
         hight=times+numpy.array(interval)
@@ -130,15 +117,19 @@ class GaussCoefficientsData(object):
 
         accs=[]
 
-        for p in zip(timepairs, range(len(timepairs))):
+        for p,i in zip(timepairs, range(len(timepairs))):
 
             g_acc = ((g_low[i]-2*g_current[i]+g_high[i])/((p[2]-p[0])*(p[1]-p[2])))**2
-            h_acc = ((h_low[i]-2*h_current[i]+g_high[i])/((p[2]-p[0])*(p[1]-p[2])))**2
+            h_acc = ((h_low[i]-2*h_current[i]+h_high[i])/((p[2]-p[0])*(p[1]-p[2])))**2
 
             l_acc = (g_acc+h_acc).sum(axis=0)
-            l_array = numpy.arange(len(l_acc))
+            l_array = rparam**(2*numpy.arange(len(l_acc))+4)*(numpy.arange(len(l_acc))+1)
 
-            #do more thingg
+            accs.append(l_array*l_acc)
+
+        return validtimes, numpy.array(accs)
+
+            
 
 
 
