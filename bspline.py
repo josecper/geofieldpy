@@ -27,7 +27,7 @@ def condition_array(knot_points, times):
 
     return a
 
-def solve(times, data, knot_points, l=0):
+def solve(times, data, knot_points, l=0, reg_degree=2):
 
     #get condition array
     n = len(knot_points)
@@ -36,14 +36,14 @@ def solve(times, data, knot_points, l=0):
     #create regularization array
     #d = -2*numpy.eye(n)+numpy.eye(n+1)[1:,:-1]+numpy.eye(n+1)[:-1,1:]
     #d = numpy.eye(n)-2*numpy.eye(n+1)[1:,:-1]+numpy.eye(n+2)[2:,:-2]
-    d = numpy.diff(numpy.eye(n),n=2,axis=0)
-    dd = numpy.matmul(d.transpose(),d)
+    d = numpy.diff(numpy.eye(n),n=reg_degree,axis=0)
+    dd = d.transpose() @ d
 
     at = a.transpose()
 
     #adda = numpy.matmul(at,numpy.matmul(dd,at))
     #smash the it
-    spline_coefs = numpy.matmul(numpy.matmul(numpy.linalg.inv(numpy.matmul(at, a)+l*dd),at),data)
+    spline_coefs = (numpy.linalg.inv(at@a+l*dd) @ at) @ data
 
     #return pyplot.plot(times, numpy.matmul(a, spline_coefs), "k", times, data, "g+")
     #spline_coefs = numpy.matmul(numpy.matmul(numpy.linalg.inv(numpy.matmul(at, a)+l*adda),at),data)
