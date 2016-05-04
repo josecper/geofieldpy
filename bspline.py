@@ -60,4 +60,30 @@ def spline_rep(times, spline_coefs, knot_points, summing=True):
     
     return y.sum(axis=1)
 
+def deboor_base(t,k,d):
     
+    tgrid, kgrid = numpy.meshgrid(t,k,indexing="ij")
+    kgridp1 = numpy.concatenate((kgrid[:,1:],kgrid[:,-1:]),axis=1)
+    
+    y=numpy.zeros_like(tgrid)
+    
+    if(d == 0):
+        y[(tgrid >= kgrid) & (tgrid < kgridp1)] = 1
+    else:
+        kgrid_pd = numpy.concatenate((kgrid[:,d:],numpy.tile(kgrid[:,-1:],(1,d))),axis=1)
+        kgrid_pdp1 = numpy.concatenate((kgrid_pd[:,1:],kgrid_pd[:,-1:]),axis=1)
+        k_p1 = numpy.append(k[1:], k[-1])
+        
+        with numpy.errstate(divide="ignore", invalid="ignore"):
+            dif_i=(tgrid-kgrid)/(kgrid_pd-kgrid)
+            dif_im1=(kgrid_pdp1-tgrid)/(kgrid_pdp1-kgridp1)
+        
+        dif_i[numpy.isnan(dif_i)]=0
+        dif_im1[numpy.isnan(dif_im1)]=0
+        dif_i[numpy.isinf(dif_i)]=0
+        dif_im1[numpy.isinf(dif_im1)]=0
+        
+        y = dif_i*deboor_base(t,k,d-1) + dif_im1*deboor_base(t,k_p1,d-1)
+    
+    #y[numpy.isnan(y)]=0
+    return y
