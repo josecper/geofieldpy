@@ -1,4 +1,5 @@
 import numpy, numpy.linalg
+import scipy.interpolate
 from matplotlib import pyplot
 
 def bspline(t, h=2/3):
@@ -100,4 +101,92 @@ def deboor_base(k,t,d):
         y[-1,:-d] = y[0, -(d+1)::-1]
     
     return y
+
+def bootstrap_fit(times, data, time_error, data_error, times_out, n_knots=66, knot_points=None, l=260, iterations=1000, return_all=False):
+
+    ndata = len(data)
+    nout = len(times_out)
+
+    if knot_points is None:
+        #synthesize knot points
+        t_min = min(times); t_max = max(times)
+        k = numpy.array((t_min, t_min, t_min,
+                         *tuple(numpy.linspace(t_min,t_max,n_knots-6)),
+                         t_max, t_max, t_max))
+    else:
+        k = knot_points
+
+    cs = numpy.zeros((iterations,nout))
+
+    #synthesize original curve
+    s0 = solve(times, data, k, l, spline_class="deboor")
+    cs[0, :] = (deboor_base(k,times_out,3) * s0).sum(axis=1)
+
+
+    for i in range(1,iterations):
+        c_rand = numpy.random.randn(ndata)*data_error+data
+        t_rand = numpy.random.randn(ndata)*time_error+times
+        
+        s = solve(t_rand, c_rand, k, l, spline_class="deboor")
+        cs[i, :] = (deboor_base(k, times_out, 3) * s).sum(axis=1)
+
+    c_avg = cs.sum(axis=0)/iterations
+    stdev = numpy.sqrt(((cs-c_avg)**2).sum(axis=0)/iterations)
+
+    if return_all:
+        return c_avg, stdev, cs
+    else:
+        return c_avg, stdev
+
+def bootstrap_fast(times, data, time_error, data_error, times_out, randomness=("normal","normal"), n_knots=66, knot_points=None, l=260, iterations=1000, clip=True, return_all=False):
+
+    ndata=len(data)
+    nout=len(times_out)
+
+    random_funcs = {"normal" : numpy.random.randn,
+                    "uniform" : lambda *args, **kwargs: 2*(numpy.random.rand(*args,**kwargs))-1}
+
+    t_randf, c_randf = random_funcs[randomness[0]], random_funcs[randomness[1]]
+
+    t_min = times[0]# - 3*time_error[0]
+    t_max = times[-1]# + 3*time_error[-1]
+    
+    if knot_points is None:
+
+        k = numpy.array((t_min, t_min, t_min,
+                         *tuple(numpy.linspace(t_min,t_max,n_knots-6)),
+                         t_max, t_max, t_max))
+    else:
+        k = knot_points
+
+    #nice good yes
+    cs = numpy.zeros((iterations,nout))
+    
+    s0, base = solve(times, data, k, l, spline_class="deboor", return_base=True)
+    base_out = deboor_base(k, times_out, 3)
+
+    cs[0,:] = (base_out*s0).sum(axis=1)
+
+    #do the things
+    #so fats
+
+    c_rand = c_randf(iterations,ndata)*data_error+data
+    if clip:
+        t_rand = numpy.clip(t_randf(iterations,ndata)*time_error+times, t_min, t_max)
+    else:
+        t_rand = t_randf(iterations,ndata)*time_error+times
+        
+    for i in range(1,iterations):
+
+        base_interpolated=scipy.interpolate.griddata(times_out, base_out, t_rand[i,:])
+        s = solve(t_rand[i,:], c_rand[i,:], k, l, spline_class="deboor", base=base_interpolated)
+        cs[i,:] = (base_out * s).sum(axis=1)
+
+    c_avg = cs.sum(axis=0)/iterations
+    stdev = numpy.sqrt(((cs-c_avg)**2).sum(axis=0)/iterations)
+
+    if return_all:
+        return c_avg, stdev, cs
+    else:
+        return c_avg, stdev
 
