@@ -176,6 +176,7 @@ class ChaosData(GaussCoefficientsData):
         self.years = [float(i) for i in fs.readline().split()]
         self.ntimes = len(self.years)
         self.nmin = 1; self.nmax = 20
+        self.gcomp = scipy.zeros((self.ntimes,self.nmax*(self.nmax+2)+1))
 
         if sparse:
             self.g = scipy.sparse.csc_matrix(shape=(self.ntimes, self.nmax+1, self.nmax+1))
@@ -193,8 +194,9 @@ class ChaosData(GaussCoefficientsData):
                     orders.append((l,m))
                     orders.append((l,-m))
 
-        for order, line in zip(orders,fs):
+        for i, order, line in zip(range(1,self.nmax+1),orders,fs):
             values=[float(v) for v in line.split()]
+            self.gcomp[:,i] = numpy.array(values)
             l,m=order
             #print(l,m)
             if m < 0:

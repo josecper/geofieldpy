@@ -12,10 +12,6 @@ def bspline(t, h=2/3):
 
     return y
 
-def d2spline(t,h=2/3):
-
-    pass
-
 def condition_array(knot_points, times):
 
     #get knot distance
@@ -102,7 +98,7 @@ def deboor_base(k,t,d):
     
     return y
 
-def bootstrap_fit(times, data, time_error, data_error, times_out, n_knots=66, knot_points=None, l=260, iterations=1000, return_all=False):
+def bootstrap_fit(times, data, time_error, data_error, times_out, n_knots=66, knot_points=None, l=260, iterations=1000, return_all=False, method="ensemble"):
 
     ndata = len(data)
     nout = len(times_out)
@@ -122,6 +118,11 @@ def bootstrap_fit(times, data, time_error, data_error, times_out, n_knots=66, kn
     s0 = solve(times, data, k, l, spline_class="deboor")
     cs[0, :] = (deboor_base(k,times_out,3) * s0).sum(axis=1)
 
+    if method == "single":
+        data = (deboor_base(k,times,3) * s0).sum(axis=1)   
+    elif method != "ensemble":
+        raise Exception("Invalid method. Accepted: 'single', 'ensemble'")
+    
 
     for i in range(1,iterations):
         c_rand = numpy.random.randn(ndata)*data_error+data

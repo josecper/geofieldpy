@@ -4,6 +4,7 @@ import scipy.misc
 import scipy.interpolate
 import numpy
 import sys
+import newleg
 
 
     #esto es un poco el mal
@@ -122,6 +123,7 @@ def xyzfieldv(gcoefs,hcoefs,phiv,thetav,rparam=1.0,order=13, regular=True):
     lgrid,mgrid=scipy.meshgrid(numpy.arange(0,order+1),numpy.arange(0,order+1),indexing="xy")
     schmidt=(-1)**mgrid*scipy.sqrt((2-numpy.equal(mgrid,0))*scipy.misc.factorial(lgrid-mgrid)/scipy.misc.factorial(lgrid+mgrid))
     #precalcular las funciones de legendre
+    #WIPE THIS THING OFF THE FACE OF THE EARTH
     legendre=numpy.array(umap(lambda x:numpy.multiply(scipy.special.lpmn(order,order,x),(schmidt,schmidt)), scipy.cos(thetav)))
     #polinomios
     plegendre=legendre[:,0,:,:]
@@ -148,7 +150,7 @@ def xyzfieldv(gcoefs,hcoefs,phiv,thetav,rparam=1.0,order=13, regular=True):
     else:
         return (x,y,z)
 
-def xyz2dif(x,y,z,units="radians"):
+def xyz2difh(x,y,z,units="radians"):
 
     xysquared=x**2+y**2
 
@@ -160,8 +162,9 @@ def xyz2dif(x,y,z,units="radians"):
         inclination=numpy.rad2deg(inclination)
     
     intensity=numpy.sqrt(xysquared+z**2)
+    horizontal=numpy.sqrt(xysquared)
 
-    return declination,inclination,intensity
+    return declination,inclination,intensity,horizontal
     
 def xyztime(gcoefsdict,hcoefsdict,phi,theta,t,rparam=1.0,order=13):
     """
@@ -363,3 +366,25 @@ def plotfield(filename="MCO_2C.DBL", resolution=(200,200), rparam=1.0, order=13,
     x,y,z=xyzfieldv(g,h,phi,theta,rparam,order)
 
     return xyzplot(theta,phi,x,y,z,vmin,vmax)
+
+def xyzfieldv2(gcoefs, phi, theta, coords, rparam=1.0, order=13, regular=False):
+
+    mv,lv=newleg.degrees(order)
+    legv,dlegv=newleg.legendre(scipy.cos(theta), order)
+
+    x=numpy.zeros_like(theta)
+    y=x.copy()
+    z=x.copy()
+
+    for m,l,g,leg,dleg in zip(mv,lv,gcoefs,legv,dlegv):
+
+        rparamexp=rparam**(l+2)
+        
+        cossin=scipy.cos(m*phi) if m>=0 else scipy.sin(m*phi)
+        sinmcos=scipy.sin(m*phi) if m>=0 else -scipy.cos(m*phi)
+
+        x += rparamexp*(g*cossin)*dleg*(-scipy.sin(theta))
+        y += rparamexp*(g*sinmcos)*m*leg/(scipy.sin(theta))
+        z -= rparamexp*(l+1)*(g*cossin)*leg
+        
+    return x,y,z

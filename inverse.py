@@ -1,5 +1,6 @@
 import numpy, numpy.linalg
-import scipy, scipy.special, scipy.misc
+import scipy, scipy.special, scipy.misc, scipy.sparse
+import xyzfield
 
 def invert(coords ,data, order=13, rparam=1.0):
 
@@ -96,3 +97,19 @@ def invert(coords ,data, order=13, rparam=1.0):
     #it works!
     return gs,hs
     
+def invert_dif(thetav, phiv, data, order=13, g0=-30000):
+    # 0. initial conditions (g)
+    # 1. calculate XYZDIFH from that
+    g=scipy.sparse.lil_array((order+1,order+1))
+    h=g.copy()
+    g[0,1]=g0
+    
+    x,y,z=xyzfield.xyzfieldv(g,h,thetav,phiv,regular=False) #small amount of points (supposedly)
+    dec,inc,intensity,horizontal=xyzfield.xyz2difh(x,y,z)
+
+    # 2. calculate A arrays (dDIF vs. dg) (remember: constant part)
+    # 3. invert to obtain dg -> g
+    # 4. synthesize XYZDIFH again
+    # 5. goto 2
+    
+    pass
