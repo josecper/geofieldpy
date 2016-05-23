@@ -148,7 +148,7 @@ def xyzfieldv(gcoefs,hcoefs,phiv,thetav,rparam=1.0,order=13, regular=True):
     if(x.shape == (1,1)):
         return (x.flat[0], y.flat[0], z.flat[0])
     else:
-        return (x,y,z)
+        return (x,y,z, plegendre, dlegendre)
 
 def xyz2difh(x,y,z,units="radians"):
 
@@ -367,7 +367,7 @@ def plotfield(filename="MCO_2C.DBL", resolution=(200,200), rparam=1.0, order=13,
 
     return xyzplot(theta,phi,x,y,z,vmin,vmax)
 
-def xyzfieldv2(gcoefs, phi, theta, coords, rparam=1.0, order=13, regular=False):
+def xyzfieldv2(gcoefs, phi, theta, rparam=1.0, order=13, regular=False):
 
     mv,lv=newleg.degrees(order)
     legv,dlegv=newleg.legendre(scipy.cos(theta), order)
@@ -379,12 +379,14 @@ def xyzfieldv2(gcoefs, phi, theta, coords, rparam=1.0, order=13, regular=False):
     for m,l,g,leg,dleg in zip(mv,lv,gcoefs,legv,dlegv):
 
         rparamexp=rparam**(l+2)
+
+        m_abs=abs(m)
         
-        cossin=scipy.cos(m*phi) if m>=0 else scipy.sin(m*phi)
-        sinmcos=scipy.sin(m*phi) if m>=0 else -scipy.cos(m*phi)
+        cossin=scipy.cos(m_abs*phi) if m>=0 else scipy.sin(m_abs*phi)
+        sinmcos=scipy.sin(m_abs*phi) if m>=0 else -scipy.cos(m_abs*phi)
 
         x += rparamexp*(g*cossin)*dleg*(-scipy.sin(theta))
-        y += rparamexp*(g*sinmcos)*m*leg/(scipy.sin(theta))
+        y += rparamexp*(g*sinmcos)*m_abs*leg/(scipy.sin(theta))
         z -= rparamexp*(l+1)*(g*cossin)*leg
         
     return x,y,z

@@ -12,7 +12,8 @@ def degrees(order):
     
 def schmidt(m,l):
 
-    return (-1)**m*scipy.sqrt((2-(m == 0))*scipy.misc.factorial(l-m)/scipy.misc.factorial(l+m))
+    m_abs=numpy.abs(m)
+    return (-1)**m_abs*scipy.sqrt((2-(m_abs == 0))*scipy.misc.factorial(l-m_abs)/scipy.misc.factorial(l+m_abs))
 
 def legendre(xv, order):
 
@@ -23,7 +24,7 @@ def legendre(xv, order):
     
     for i,x in enumerate(xv):
         leg, dleg = lpmn(order,order,x)
-        legout[:,i]= leg[m,l]*sch
-        dlegout[:,i]= dleg[m,l]*sch
+        legout[:,i]= leg[abs(m),l]*sch
+        dlegout[:,i]= dleg[abs(m),l]*sch
 
     return legout, dlegout

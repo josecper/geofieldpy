@@ -1,6 +1,6 @@
 import numpy, numpy.linalg
 import scipy, scipy.special, scipy.misc, scipy.sparse
-import xyzfield
+import xyzfield, newleg
 
 def invert(coords ,data, order=13, rparam=1.0):
 
@@ -97,19 +97,28 @@ def invert(coords ,data, order=13, rparam=1.0):
     #it works!
     return gs,hs
     
-def invert_dif(thetav, phiv, data, order=13, g0=-30000):
+def invert_dif(thetav, phiv, data, order=13, g0=-30000, steps=5):
     # 0. initial conditions (g)
     # 1. calculate XYZDIFH from that
-    g=scipy.sparse.lil_array((order+1,order+1))
-    h=g.copy()
-    g[0,1]=g0
+    g=numpy.zeros(order*(order+2)+1); g[1]=g0
     
-    x,y,z=xyzfield.xyzfieldv(g,h,thetav,phiv,regular=False) #small amount of points (supposedly)
+    x,y,z=xyzfield.xyzfieldv2(g,phiv,thetav) #small amount of points (supposedly)
     dec,inc,intensity,horizontal=xyzfield.xyz2difh(x,y,z)
 
     # 2. calculate A arrays (dDIF vs. dg) (remember: constant part)
+    
     # 3. invert to obtain dg -> g
     # 4. synthesize XYZDIFH again
     # 5. goto 2
     
     pass
+
+def condition_array_xyz(thetav, phiv, order=13):
+
+    mv,lv=newleg.degrees(order)
+    leg,dleg=newleg.legendre(scipy.cos(thetav), order)
+
+    cossin = numpy.zeros((len(phiv),order*(order+2)+1))
+    #cossin[mv >= 0] = 
+    sinmcos=numpy.zeros((len(phiv),order*(order+2)+1))
+    
