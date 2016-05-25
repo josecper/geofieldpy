@@ -369,7 +369,7 @@ def plotfield(filename="MCO_2C.DBL", resolution=(200,200), rparam=1.0, order=13,
 
 def xyzfieldv2(gcoefs, phi, theta, rparam=1.0, order=13, regular=False):
 
-    mv,lv=newleg.degrees(order)
+    mv,lv=newleg.degrees(order, start=1)
     legv,dlegv=newleg.legendre(scipy.cos(theta), order)
 
     x=numpy.zeros_like(theta)

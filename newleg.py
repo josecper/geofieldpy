@@ -3,10 +3,10 @@ import scipy, scipy.misc
 from scipy.special import lpmn
 import numpy
 
-def degrees(order):
+def degrees(order, start=0):
 
-    l=numpy.array(list(chain(*[[i]*(2*i+1) for i in range(order+1)])))
-    m=numpy.array(list(chain(*chain(*[[[i, -i] if i != 0 else [0] for i in range(j+1)] for j in range(order+1)]))))
+    l=numpy.array(list(chain(*[[i]*(2*i+1) for i in range(start,order+1)])))
+    m=numpy.array(list(chain(*chain(*[[[i, -i] if i != 0 else [0] for i in range(j+1)] for j in range(start,order+1)]))))
 
     return m,l
     
@@ -17,9 +17,9 @@ def schmidt(m,l):
 
 def legendre(xv, order):
 
-    legout=numpy.zeros((order*(order+2)+1,len(xv)))
+    legout=numpy.zeros((order*(order+2),len(xv)))
     dlegout=legout.copy()
-    m,l=degrees(order)
+    m,l=degrees(order, start=1)
     sch=schmidt(m,l)
     
     for i,x in enumerate(xv):

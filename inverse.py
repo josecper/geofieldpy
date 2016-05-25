@@ -1,6 +1,8 @@
 import numpy, numpy.linalg
 import scipy, scipy.special, scipy.misc, scipy.sparse
 import xyzfield, newleg
+#debug
+from matplotlib import pyplot
 
 def invert(coords ,data, order=13, rparam=1.0):
 
@@ -100,25 +102,75 @@ def invert(coords ,data, order=13, rparam=1.0):
 def invert_dif(thetav, phiv, data, order=13, g0=-30000, steps=5):
     # 0. initial conditions (g)
     # 1. calculate XYZDIFH from that
-    g=numpy.zeros(order*(order+2)+1); g[1]=g0
-    
-    x,y,z=xyzfield.xyzfieldv2(g,phiv,thetav) #small amount of points (supposedly)
-    dec,inc,intensity,horizontal=xyzfield.xyz2difh(x,y,z)
+    g=numpy.zeros(order*(order+2)); g[0]=g0
+    Ax,Ay,Az = condition_array_xyz(thetav,phiv,order)
+
+    dec0, inc0, int0 = data
+    dif0=numpy.concatenate((dec0,inc0,int0))
+    dif=dif0.copy()
 
     # 2. calculate A arrays (dDIF vs. dg) (remember: constant part)
+    for iteration in range(steps):
+        x,y,z=xyzfield.xyzfieldv2(g,phiv,thetav, rparam=1.0, order=order) #small amount of points (supposedly)
+        #debug
+        #pyplot.show(xyzfield.xyzcontour(thetav,phiv,x,y,z,regular=False))
+        
+        dec,inc,intensity,horizontal=xyzfield.xyz2difh(x,y,z)
+        
+        Ad, Ai, Af = condition_array_dif(x,y,z,intensity,horizontal, Ax, Ay, Az, order)
+        #remove emptys
+        Ad=Ad[:,~numpy.isnan(dec0)]
+        Ai=Ai[:,~numpy.isnan(inc0)]
+        Af=Af[:,~numpy.isnan(int0)]
+
+        dec=dec[~numpy.isnan(dec0)]
+        inc=inc[~numpy.isnan(inc0)]
+        intensity=intensity[~numpy.isnan(int0)]
+
+        Adif=numpy.concatenate((Ad,Ai,Af), axis=1)
+
+        old_dif=dif.copy()
+        dif = numpy.concatenate((dec,inc,intensity))
+        
+        #get delta
+        delta=dif0-dif
+        #g = numpy.linalg.inv(Adif @ Adif.transpose()) @ Adif @ dif0
+        g = g + numpy.linalg.inv(Adif @ Adif.transpose()) @ Adif @ delta
+        print(g[:5], sum(abs(delta)))
     
     # 3. invert to obtain dg -> g
     # 4. synthesize XYZDIFH again
     # 5. goto 2
-    
-    pass
+    #fix weird shit
+    return g
 
 def condition_array_xyz(thetav, phiv, order=13):
 
-    mv,lv=newleg.degrees(order)
+    mv,lv=newleg.degrees(order, start=1)
     leg,dleg=newleg.legendre(scipy.cos(thetav), order)
 
-    cossin = numpy.zeros((len(phiv),order*(order+2)+1))
-    #cossin[mv >= 0] = 
-    sinmcos=numpy.zeros((len(phiv),order*(order+2)+1))
+    cossin = numpy.zeros((len(phiv),order*(order+2)))
+    cossin[:, mv >= 0] = numpy.cos(phiv[:, numpy.newaxis] @ abs(mv[numpy.newaxis, :]))[:, mv >= 0]
+    cossin[:, mv < 0] = numpy.sin(phiv[:, numpy.newaxis] @ abs(mv[numpy.newaxis, :]))[:, mv < 0]
+
+    sinmcos=numpy.zeros((len(phiv),order*(order+2)))
+    sinmcos[:, mv >= 0] = numpy.sin(phiv[:, numpy.newaxis] @ abs(mv[numpy.newaxis, :]))[:, mv >= 0]
+    sinmcos[:, mv < 0] = -numpy.cos(phiv[:, numpy.newaxis] @ abs(mv[numpy.newaxis, :]))[:, mv < 0]
     
+    costhetav = numpy.cos(thetav)
+    sinthetav = numpy.sin(thetav)
+
+    Ax = cossin.transpose() * dleg * (-sinthetav)
+    Ay = abs(mv[:, numpy.newaxis]) * leg * sinmcos.transpose() / sinthetav
+    Az = -(lv + 1)[:, numpy.newaxis] * leg * cossin.transpose()
+
+    return Ax, Ay, Az
+
+def condition_array_dif(x, y, z, f, h, Ax, Ay, Az, order=13):
+
+    #this is probably wrong :(
+    Ad = (-y*Ax+x*Ay)/h**2
+    Ai = (-x*z*Ax-y*z*Ay)/(h*f**2)+Az*h/f**2
+    Af = (x*Ax+y*Ay+z*Az)/f
+    
+    return Ad, Ai, Af
