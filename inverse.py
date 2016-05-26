@@ -100,16 +100,19 @@ def invert(coords ,data, order=13, rparam=1.0):
     return gs,hs
     
 def invert_dif(thetav, phiv, data, order=13, g0=-30000, steps=5):
-    # 0. initial conditions (g)
-    # 1. calculate XYZDIFH from that
+
     g=numpy.zeros(order*(order+2)); g[0]=g0
     Ax,Ay,Az = condition_array_xyz(thetav,phiv,order)
 
     dec0, inc0, int0 = data
-    dif0=numpy.concatenate((dec0,inc0,int0))
+
+    dec0_f = dec0[~numpy.isnan(dec0)]
+    inc0_f = inc0[~numpy.isnan(inc0)]
+    int0_f = int0[~numpy.isnan(int0)]
+    
+    dif0=numpy.concatenate((dec0_f,inc0_f,int0_f))
     dif=dif0.copy()
 
-    # 2. calculate A arrays (dDIF vs. dg) (remember: constant part)
     for iteration in range(steps):
         x,y,z=xyzfield.xyzfieldv2(g,phiv,thetav, rparam=1.0, order=order) #small amount of points (supposedly)
         #debug
@@ -128,20 +131,14 @@ def invert_dif(thetav, phiv, data, order=13, g0=-30000, steps=5):
         intensity=intensity[~numpy.isnan(int0)]
 
         Adif=numpy.concatenate((Ad,Ai,Af), axis=1)
-
-        old_dif=dif.copy()
         dif = numpy.concatenate((dec,inc,intensity))
         
         #get delta
         delta=dif0-dif
         #g = numpy.linalg.inv(Adif @ Adif.transpose()) @ Adif @ dif0
         g = g + numpy.linalg.inv(Adif @ Adif.transpose()) @ Adif @ delta
-        print(g[:5], sum(abs(delta)))
-    
-    # 3. invert to obtain dg -> g
-    # 4. synthesize XYZDIFH again
-    # 5. goto 2
-    #fix weird shit
+        #print(g[:5], sum(abs(delta)))
+        
     return g
 
 def condition_array_xyz(thetav, phiv, order=13):
@@ -168,7 +165,6 @@ def condition_array_xyz(thetav, phiv, order=13):
 
 def condition_array_dif(x, y, z, f, h, Ax, Ay, Az, order=13):
 
-    #this is probably wrong :(
     Ad = (-y*Ax+x*Ay)/h**2
     Ai = (-x*z*Ax-y*z*Ay)/(h*f**2)+Az*h/f**2
     Af = (x*Ax+y*Ay+z*Az)/f
