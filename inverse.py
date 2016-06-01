@@ -1,6 +1,7 @@
 import numpy, numpy.linalg
 import scipy, scipy.special, scipy.misc, scipy.sparse
 import xyzfield, newleg
+import warnings
 #debug
 from matplotlib import pyplot
 
@@ -114,8 +115,7 @@ def invert_dif(thetav, phiv, data, order=13, g0=-30000, steps=5):
     dif=dif0.copy()
 
     for iteration in range(steps):
-        x,y,z=xyzfield.xyzfieldv2(g,phiv,thetav, rparam=1.0, order=order) #small amount of points (supposedly)
-        #debug
+        x,y,z=xyzfield.xyzfieldv2(g,phiv,thetav, rparam=1.0, order=order)
         #pyplot.show(xyzfield.xyzcontour(thetav,phiv,x,y,z,regular=False))
         
         dec,inc,intensity,horizontal=xyzfield.xyz2difh(x,y,z)
@@ -138,7 +138,8 @@ def invert_dif(thetav, phiv, data, order=13, g0=-30000, steps=5):
         #g = numpy.linalg.inv(Adif @ Adif.transpose()) @ Adif @ dif0
         g = g + numpy.linalg.inv(Adif @ Adif.transpose()) @ Adif @ delta
         #print(g[:5], sum(abs(delta)))
-        
+
+    if (sum(abs(delta)) > 1000): warnings.warn("inversion might not have converged (╯°□°)╯︵ ┻━┻")
     return g
 
 def condition_array_xyz(thetav, phiv, order=13):

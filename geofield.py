@@ -129,8 +129,29 @@ class GaussCoefficientsData(object):
 
         return validtimes, numpy.array(accs)
 
-            
+class SHADIFData(GaussCoefficientsData):
 
+    def __init__(self,filename):
+
+        fs=open(filename, "r")
+        
+        coefs={}
+
+        for line in fs:
+            year, l, m, gcoef, hcoef = [float(v) for v in line.split()]
+
+            if year not in coefs:
+                coefs[year]=[]
+
+            coefs[year].append(gcoef)
+            if m != 0:
+                coefs[year].append(hcoef)
+
+        self.years = sorted(coefs)
+        self.gcomp = numpy.zeros((len(self.years),max([len(coefs[y]) for y in self.years])))
+
+        for i, y in enumerate(self.years):
+            self.gcomp[i]=numpy.array(coefs[y])
 
 
 
