@@ -131,11 +131,15 @@ class GaussCoefficientsData(object):
 
 class SHADIFData(GaussCoefficientsData):
 
-    def __init__(self,filename):
+    def __init__(self,filename,filename_err=None):
 
         fs=open(filename, "r")
+
+        if filename_err:
+            fe=open(filename_err, "r")
         
         coefs={}
+        errors={}
 
         for line in fs:
             year, l, m, gcoef, hcoef = [float(v) for v in line.split()]
@@ -147,11 +151,26 @@ class SHADIFData(GaussCoefficientsData):
             if m != 0:
                 coefs[year].append(hcoef)
 
+        if filename_err:
+            for line in fe:
+                year, l, m, gerr, herr = [float(v) for v in line.split()]
+
+                if year not in errors:
+                    errors[year]=[]
+
+                errors[year].append(gerr)
+                if m != 0:
+                    errors[year].append(herr)
+
         self.years = sorted(coefs)
         self.gcomp = numpy.zeros((len(self.years),max([len(coefs[y]) for y in self.years])))
+        self.gcomp_err = self.gcomp.copy()
 
         for i, y in enumerate(self.years):
             self.gcomp[i]=numpy.array(coefs[y])
+
+            if filename_err:
+                self.gcomp_err[i]=numpy.array(errors[y])
 
 
 
