@@ -1,4 +1,5 @@
 import numpy
+import newleg
 
 def ecc_dipole(gcomp, a=6371.0):
 
@@ -18,10 +19,15 @@ def ecc_dipole(gcomp, a=6371.0):
 
     return xc, yc, zc
 
-def power(gcomp, l):
+def power(gcomp, lmin, lmax, rparam=1.0, separated=False):
 
-    start=2*sum(range(l))+l-1
-    return sum(gcomp[start : start+(2*l+1)]**2)
+    m,l=newleg.degrees(lmax,start=1)
+    powers=rparam**(2*l[l >= lmin]+4)*(l[l >= lmin] + 1)*gcomp[:, numpy.where(l >= lmin)]**2
+
+    if separated:
+        return powers.sum(axis=1)
+    else:
+        return powers.sum(axis=2).sum(axis=1)
 
 def xyz2cyl(x,y,z):
 
