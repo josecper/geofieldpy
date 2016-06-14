@@ -19,6 +19,17 @@ def ecc_dipole(gcomp, a=6371.0):
 
     return xc, yc, zc
 
+def coords(gcomp):
+
+    g10, g11, h11 = gcomp[..., :3].transpose()
+
+    m0 = numpy.sqrt(g10**2 + g11**2 + h11**2)
+
+    theta = numpy.pi - numpy.arccos(g10/m0)
+    phi = - numpy.pi + numpy.arctan2(h11, g11)
+    
+    return theta, phi
+
 def power(gcomp, lmin, lmax, rparam=1.0, separated=False):
 
     m,l=newleg.degrees(lmax,start=1)

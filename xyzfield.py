@@ -2,6 +2,7 @@ import scipy
 import scipy.special
 import scipy.misc
 import scipy.interpolate
+import scipy.optimize
 import numpy
 import sys
 import newleg
@@ -390,3 +391,43 @@ def xyzfieldv2(gcoefs, phi, theta, rparam=1.0, order=13, regular=False):
         z -= rparamexp*(l+1)*(g*cossin)*leg
         
     return x,y,z
+
+def magnetic_north(gcoefs, order, south=True, debug=False):
+    
+    northlons=[]; northlats=[]
+    startingpoint_north=(numpy.pi, numpy.pi/2)
+    if south:
+        southlons=[]; southlats=[]
+        startingpoint_south=(numpy.pi, numpy.pi/2)
+
+    m, l = newleg.degrees(order, start=1)
+    max_index = len(m)
+
+    def inc_value(coords, gcomp):
+        
+        x, y, z = xyzfieldv2(gcomp[:max_index], numpy.array([coords[0]]), numpy.array([coords[1]]), regular=False, order=order)
+        inc = numpy.arctan2(z, numpy.sqrt(x**2 + y**2))
+        return -inc
+
+    for gcomp in gcoefs:
+
+        sol_north = scipy.optimize.minimize(inc_value, startingpoint_north, args=(gcomp),
+                                            method="Powell")
+        startingpoint_north = sol_north.x
+        north_lon, north_lat = numpy.rad2deg(sol_north.x[0]), 90 - numpy.rad2deg(sol_north.x[1])
+        northlons.append(north_lon); northlats.append(north_lat)
+        
+        if south:
+            sol_south = scipy.optimize.minimize(lambda x, g: -inc_value(x, g), startingpoint_south, args=(gcomp),
+                                                method="Powell")
+            startingpoint_south = sol_south.x
+            south_lon, south_lat = numpy.rad2deg(sol_south.x[0]), 90 - numpy.rad2deg(sol_south.x[1])
+            southlons.append(south_lon); southlats.append(south_lat)
+
+        if debug:
+            print(north_lon, north_lat)
+
+    if south:
+        return northlons, northlats, southlons, southlats
+    else:
+        return northlons, northlats
