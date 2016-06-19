@@ -419,7 +419,7 @@ def magnetic_north(gcoefs, order, south=True, debug=False):
         
         if south:
             sol_south = scipy.optimize.minimize(lambda x, g: -inc_value(x, g), startingpoint_south, args=(gcomp),
-                                                method="Powell")
+                                                method="Powell", options={disp : debug})
             startingpoint_south = sol_south.x
             south_lon, south_lat = numpy.rad2deg(sol_south.x[0]), 90 - numpy.rad2deg(sol_south.x[1])
             southlons.append(south_lon); southlats.append(south_lat)
