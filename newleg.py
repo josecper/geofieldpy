@@ -20,7 +20,6 @@ def schmidt(m,l):
     m_abs=numpy.abs(m)
     return (-1)**m_abs*scipy.sqrt((2-(m_abs == 0))*scipy.misc.factorial(l-m_abs)/scipy.misc.factorial(l+m_abs))
 
-@mem.cache
 def legendre(xv, order):
 
     legout=numpy.zeros((order*(order+2),len(xv)))
