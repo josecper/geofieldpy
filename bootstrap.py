@@ -3,7 +3,14 @@ import sys
 import datetime
 from joblib import Parallel, delayed
 
-def bootstrap(func, args, errors, error_type="gaussian", return_all=False, iterations=1000, *xargs, **kwargs):
+def stdev_linear(outputs, average):
+    return numpy.sqrt(((outputs - average)**2).sum(axis=0)/len(outputs))
+
+def stdev_cyclic(outputs, average, cycle=360):
+    differences = ((outputs - average) + cycle/2) % cycle - cycle/2
+    return numpy.sqrt((differences**2).sum(axis=0)/len(outputs))
+
+def bootstrap(func, args, errors, error_type="gaussian", stdev_func=stdev_linear, return_all=False, iterations=1000, *xargs, **kwargs):
 
     outputs = []
     
@@ -14,7 +21,7 @@ def bootstrap(func, args, errors, error_type="gaussian", return_all=False, itera
 
     outputs = numpy.array(outputs)
     average = outputs.sum(axis=0)/iterations
-    stdev = numpy.sqrt(((outputs - average)**2).sum(axis=0)/iterations)
+    stdev = stdev_func(outputs, average)
 
     if return_all:
         return average, stdev, outputs
@@ -22,7 +29,7 @@ def bootstrap(func, args, errors, error_type="gaussian", return_all=False, itera
         return average, stdev
     
     
-def parallelize(func, args, errors, error_type="gaussian", return_all=False, n_jobs=4, iterations=100, debug=False, *xargs, **kwargs):
+def parallelize(func, args, errors, error_type="gaussian", stdev_func=stdev_linear, return_all=False, n_jobs=4, iterations=100, debug=False, *xargs, **kwargs):
     
     outputs = []
     if debug:
@@ -42,9 +49,13 @@ def parallelize(func, args, errors, error_type="gaussian", return_all=False, n_j
         outs = Parallel(n_jobs=n_jobs)(delayed(func)(*boot_arg, *xargs, **kwargs) for boot_arg in boot_args)
         outputs.extend(outs)
 
+    if debug:
+        sys.stdout.write("\r"+"{time} | done! ({itsmax} iterations)\n".format(time=datetime.datetime.now()-start,
+                                                                              itsmax = iterations))
+
     outputs = numpy.array(outputs)
     average = outputs.sum(axis=0)/iterations
-    stdev = numpy.sqrt(((outputs - average)**2).sum(axis=0)/iterations)
+    stdev = stdev_func(outputs, average)
 
     if return_all:
         return average, stdev, outputs
