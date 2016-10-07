@@ -1,11 +1,17 @@
 import numpy
 import numpy.linalg
 import scipy
+import scipy.interpolate
 import scipy.special
 import scipy.optimize
-import xyzfield
+import xyzfield as xyz
+import warnings
 
-sin = numpy.sin; cos = numpy.cos
+sin = numpy.sin; cos = numpy.cos; lpmv = scipy.special.lpmv
+
+def dlpmv(m, n, z):
+    #return 1/numpy.sqrt(1-z**2)*(z*n*lpmv(m,n,z) - (m+n)*lpmv(m-1,n,z))
+    return 1/(z**2-1)*(n*z*lpmv(m,n,z) - (m+n)*lpmv(m, n-1, z))
 
 def step_solve(func, interval, args=(), step=0.02) -> numpy.ndarray:
 
@@ -20,14 +26,14 @@ def step_solve(func, interval, args=(), step=0.02) -> numpy.ndarray:
             
     return numpy.array(roots)
 
-def degree(ms, theta0, max_k, solve_step=0.02, overstep_size = 1.0) -> list:
+def degree(ms, theta0, max_k, solve_step=0.01, overstep_size = 1.0) -> list:
 
     """find n[k], degrees of the legendre functions such that boundary conditions on theta0 are satisfied"""
     lpmv = scipy.special.lpmv
     cos = scipy.cos
 
     #arbitrary magical number
-    maxrange = max_k*3
+    maxrange = max_k*5
 
     #bendito sea el señor
     ms = numpy.atleast_1d(ms)
@@ -57,14 +63,40 @@ def degree(ms, theta0, max_k, solve_step=0.02, overstep_size = 1.0) -> list:
 
     return roots
 
-def join_roots(ms, roots):
-    #create degree array
-    pass
+def join_roots(roots):
 
-def schmidt_real(ms, ns) -> numpy.array:
+    k_max = len(roots)
+
+    k, m, n = [], [], []
+
+    for ki in range(0, k_max):
+        k.append(ki)
+        m.append(0)
+        for mi in range(1, ki + 1):
+            k.append(ki)
+            k.append(ki)
+            m.append(mi)
+            m.append(-mi)
+        
+    roots_joined = [numpy.sort(numpy.concatenate((evens, odds))) for (evens, odds) in roots]
+    for mi, m_roots in enumerate(roots_joined):
+        roots_joined[mi] = m_roots[m_roots > mi]
+
+    for (ki, mi) in zip(k, m):
+        n.append(roots_joined[abs(mi)][ki-abs(mi)])
+
+    return k, m, n
+    
+def schmidt_real(ms, ns, grid=True) -> numpy.array:
 
     numpy.seterr(divide="ignore", invalid="ignore")
-    n, m = numpy.meshgrid(ns, ms, indexing="ij")
+    if grid:
+        n, m = numpy.meshgrid(ns, ms, indexing="ij")
+        m = abs(m)
+    else:
+        n, m = numpy.atleast_1d(ns), abs(numpy.atleast_1d(ms))
+    #factor = (-1)**m*scipy.sqrt((2-1.0*(m == 0))*scipy.special.gamma(n-m+1)/scipy.special.gamma(n+m+1))
+    #factor = scipy.sqrt((2-1.0*(m == 0))*scipy.special.gamma(n-m+1)/scipy.special.gamma(n+m+1))
     factor = (-1)**m*scipy.sqrt((2-1.0*(m == 0))*scipy.special.gamma(n-m+1)/scipy.special.gamma(n+m+1))
     return numpy.squeeze(numpy.real(factor))
 
@@ -113,3 +145,165 @@ def rotate_vector(x, y, z, pole_theta, pole_phi, theta, phi, theta_rot):
                            (0. , 0. , 1.)))
 
     return rot_mat @ numpy.array((x,y,z))
+
+def xyzfield(k, m, n, gcoefs, thetav, phiv):    
+    lpmv = scipy.special.lpmv
+
+
+    x = numpy.zeros_like(thetav)
+    y = x.copy()
+    z = x.copy()
+
+    schmidt = schmidt_real(m, n, grid=False)
+
+    for ki, mi, ni, g, sch in zip(k, m, n, gcoefs, schmidt):
+    
+        m_abs = abs(mi)
+    
+        cossin = numpy.cos(m_abs*phiv) if mi >= 0 else numpy.sin(m_abs*phiv)
+        sinmcos = numpy.sin(m_abs*phiv) if mi >= 0 else -numpy.cos(m_abs*phiv)
+
+        leg = lpmv(m_abs, ni, numpy.cos(thetav))*sch
+        #dleg = numpy.gradient(leg)*len(thetav)/(numpy.max(thetav)) #might be a bad thing
+        dleg = dlpmv(m_abs, ni, numpy.cos(thetav))*(-numpy.sin(thetav))*sch
+    
+        #x += g*cossin*sch*dlpmv(m_abs, ni, numpy.cos(thetav))*(-numpy.sin(thetav))
+        #y += g*sinmcos*m_abs*sch*lpmv(m_abs, ni, numpy.cos(thetav))/numpy.sin(thetav)
+        #z -= (ki+1)*(g*cossin)*sch*lpmv(m_abs, ni, numpy.cos(thetav))
+
+        x += g*cossin*dleg
+        y += g*sinmcos*m_abs*leg/numpy.sin(thetav)
+        z -= (ni+1)*(g*cossin)*leg
+
+    return x, y, z
+
+def polar_contour(scalar, thetav, phiv, theta0, ax, resolution=200, base=None):
+    
+    lat0 = numpy.rad2deg(theta0)
+    from mpl_toolkits.basemap import Basemap
+    
+    if base is None:
+        base = Basemap(projection="npaeqd", lon_0 = 0, boundinglat=90-lat0)
+
+    #base.drawparallels(numpy.arange(90-lat0, 90, 5), ax=ax)
+
+    phinew=scipy.linspace(-numpy.pi, numpy.pi, resolution)
+    thetanew=scipy.linspace(0.01*theta0, theta0, resolution)
+
+    thetagrid, phigrid = scipy.meshgrid(thetanew,phinew,indexing="xy")
+
+    xx=scipy.interpolate.griddata((thetav,phiv), scalar, (thetagrid,phigrid), method="linear")
+    xx[numpy.isnan(xx)] = 0.0
+
+    lon = numpy.rad2deg(phigrid)
+    lat = 90 - numpy.rad2deg(thetagrid)
+
+    return base.contourf(lon, lat, xx, 40, latlon=True, ax=ax, cmap="bwr")
+
+def polar_tricontour(scalar, thetav, phiv, theta0, ax, base=None, cmap="bwr"):
+    
+    lat0 = numpy.rad2deg(theta0)
+    from mpl_toolkits.basemap import Basemap
+    
+    if base is None:
+        base = Basemap(projection="npaeqd", lon_0 = 0, boundinglat=90-lat0)
+
+    #base.drawparallels(numpy.arange(90-lat0, 90, 5), ax=ax)
+
+    lonv = numpy.rad2deg(phiv)
+    latv = 90 - numpy.rad2deg(thetav)
+    
+    x_coord, y_coord = base(lonv, latv)
+
+    return ax.tricontourf(x_coord, y_coord, scalar, 60, cmap=cmap,
+                          vmin=-numpy.max(abs(scalar))*1.1, vmax=numpy.max(abs(scalar))*1.1)
+
+def condition_matrix_xyz(thetav, phiv, degrees):
+    """ degrees is the dang k, m, n thing """
+
+    k, m, n = numpy.array(degrees)
+    m_abs = numpy.abs(m)
+    cos = numpy.cos; sin = numpy.sin; lpmv = scipy.special.lpmv
+    schmidt = schmidt_real(m, n, grid=False)
+
+    cossin = numpy.empty((len(thetav), len(k)))
+    cossin[:, m >= 0] = cos(phiv[:, numpy.newaxis] @ numpy.abs(m[numpy.newaxis, :]))[:, m >= 0]
+    cossin[:, m < 0] = sin(phiv[:, numpy.newaxis] @ numpy.abs(m[numpy.newaxis, :]))[:, m < 0]
+
+    sinmcos = numpy.empty_like(cossin)
+    sinmcos[:, m >= 0] = sin(phiv[:, numpy.newaxis] @ numpy.abs(m[numpy.newaxis, :]))[:, m >= 0]
+    sinmcos[:, m < 0] = -cos(phiv[:, numpy.newaxis] @ numpy.abs(m[numpy.newaxis, :]))[:, m < 0]
+
+    costhetav = cos(thetav)[:, numpy.newaxis]
+    sinthetav = sin(thetav)[:, numpy.newaxis]
+
+    leg = numpy.empty_like(cossin)
+    dleg = numpy.empty_like(cossin)
+
+    for i, (mi_abs, ni, sch) in enumerate(zip(m_abs,n,schmidt)):
+        leg[:, i] = lpmv(mi_abs, ni, costhetav[:,0])*sch
+        #dleg[:, i] = dlpmv(mi, ni, costhetav[:,0])*sch
+        #dleg[:, i]  = numpy.gradient(leg[:,i])*len(thetav)/numpy.max(thetav)
+        dleg[:, i] = dlpmv(mi_abs, ni, costhetav[:,0])*sch*(-sinthetav[:,0])
+        
+    Ax = cossin * dleg
+    Ay = numpy.abs(m) * leg * sinmcos / sinthetav
+    Az = -(n + 1) * leg * cossin
+
+    return Ax, Ay, Az
+
+def invert_xyz(thetav, phiv, Bx, By, Bz, degrees):
+
+    #build condition matrix
+    Axyz = numpy.concatenate(condition_matrix_xyz(thetav, phiv, degrees), axis=0)
+
+    #smash the bros
+    Bxyz = numpy.concatenate((Bx, By, Bz), axis=0)
+
+    #do a nice invert
+    g = (numpy.linalg.inv(Axyz.T @ Axyz) @ Axyz.T) @ Bxyz
+
+    return g
+
+def condition_matrix_dif(x, y, z, f, h, Ax, Ay, Az):
+
+    xx = x[:, numpy.newaxis]; yy = y[:, numpy.newaxis]; zz = z[:, numpy.newaxis]
+    ff = f[:, numpy.newaxis]; hh = h[:, numpy.newaxis]
+
+    Ad = (-yy*Ax + xx*Ay)/hh**2
+    Ai = (-xx*zz*Ax - yy*zz*Ay)/(hh*ff**2)+Az*hh/ff**2
+    Af = (xx*Ax+yy*Ay+zz*Az)/ff
+    
+    return Ad, Ai, Af
+
+def invert_dif(thetav, phiv, D, I, F, degrees, g0=None, steps=5):
+
+    k, m, n = degrees
+    
+    if g0 is None:
+        g0 = numpy.zeros_like(k); g0[0] = -1000 #because why the heck not
+
+    g = g0.copy()
+
+    Ax, Ay, Az = condition_matrix_xyz(thetav, phiv, degrees)
+
+    D_0, I_0, F_0 = D, I, F
+    dif_0 = numpy.concatenate((D_0, I_0, F_0))
+
+    for iteration in range(steps):
+        Bx, By, Bz = xyzfield(k, m, n, g, thetav, phiv)
+
+        D_model, I_model, F_model, H_model = xyz.xyz2difh(Bx, By, Bz)
+
+        Adif = numpy.concatenate(condition_matrix_dif(Bx, By, Bz, F_model, H_model, Ax, Ay, Az), axis=0)
+        dif = numpy.concatenate((D_model, I_model, F_model), axis=0)
+
+        delta = dif - dif_0
+
+        # estoy haciendo alguna mierda mala
+        g = g + (numpy.linalg.inv(Adif.T @ Adif) @ Adif.T) @ delta
+        #g = g - numpy.linalg.lstsq(Adif, delta)[0]
+        print(sum(abs(delta)), delta[0])
+
+    if (sum(abs(delta)) > 1000): warnings.warn("inversion might not have converged (╯°□°)╯︵ ┻━┻")
+    return g
