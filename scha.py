@@ -6,6 +6,7 @@ import scipy.special
 import scipy.optimize
 import xyzfield as xyz
 import warnings
+import sys
 
 sin = numpy.sin; cos = numpy.cos; lpmv = scipy.special.lpmv
 
@@ -132,10 +133,7 @@ def rotate_coords(r, theta, phi, matrix):
     
 def rotate_vector(x, y, z, pole_theta, pole_phi, theta, phi, theta_rot):
 
-    #NO SE SI ESTÁ BIEN PERO PODRÍA SER QUE SÍ
-    #SÍ ESTÁ BIEN AL 96.4% DE CONFIANZA
-    #this will be slow since the rotation matrix depends on each point's coordinates
-    #and so it can't be precomputed :'(
+    #guay
     angle = numpy.arcsin(sin(pole_theta)*sin(numpy.arctan2(sin(phi-pole_phi), cos(phi-pole_phi)))/sin(theta_rot))
     if (pole_theta > theta):
         angle = -angle + numpy.pi
@@ -145,6 +143,14 @@ def rotate_vector(x, y, z, pole_theta, pole_phi, theta, phi, theta_rot):
                            (0. , 0. , 1.)))
 
     return rot_mat @ numpy.array((x,y,z))
+
+def rotate_declination(dec, pole_theta, pole_phi, theta, phi, theta_rot):
+
+    #ok it works
+    angle = numpy.arcsin(sin(pole_theta)*sin(numpy.arctan2(sin(phi-pole_phi), cos(phi-pole_phi)))/sin(theta_rot))
+    angle[pole_theta > theta] = -angle[pole_theta > theta] + numpy.pi
+
+    return dec + angle
 
 def xyzfield(k, m, n, gcoefs, thetav, phiv):    
     lpmv = scipy.special.lpmv
@@ -200,7 +206,7 @@ def polar_contour(scalar, thetav, phiv, theta0, ax, resolution=200, base=None):
 
     return base.contourf(lon, lat, xx, 40, latlon=True, ax=ax, cmap="bwr")
 
-def polar_tricontour(scalar, thetav, phiv, theta0, ax, base=None, cmap="bwr"):
+def polar_tricontour(scalar, thetav, phiv, theta0, ax, base=None, cmap="bwr", scale="symmetric"):
     
     lat0 = numpy.rad2deg(theta0)
     from mpl_toolkits.basemap import Basemap
@@ -215,8 +221,18 @@ def polar_tricontour(scalar, thetav, phiv, theta0, ax, base=None, cmap="bwr"):
     
     x_coord, y_coord = base(lonv, latv)
 
+    if(scale == "symmetric"):
+        vmin=-numpy.max(abs(scalar))*1.1; vmax=numpy.max(abs(scalar))*1.1
+    elif(scale == "minmax"):
+        vmin=numpy.min(scalar); vmax=numpy.max(scalar)
+    elif(scale == "positive"):
+        vrange = numpy.max(scalar)-numpy.min(scalar)
+        vmax = numpy.max(scalar); vmin = vmax-vrange*2
+    else:
+        vmin=-numpy.max(abs(scalar))*1.1; vmax=numpy.max(abs(scalar))*1.1
+
     return ax.tricontourf(x_coord, y_coord, scalar, 60, cmap=cmap,
-                          vmin=-numpy.max(abs(scalar))*1.1, vmax=numpy.max(abs(scalar))*1.1)
+                          vmin=vmin, vmax=vmax)
 
 def condition_matrix_xyz(thetav, phiv, degrees):
     """ degrees is the dang k, m, n thing """
@@ -226,19 +242,19 @@ def condition_matrix_xyz(thetav, phiv, degrees):
     cos = numpy.cos; sin = numpy.sin; lpmv = scipy.special.lpmv
     schmidt = schmidt_real(m, n, grid=False)
 
-    cossin = numpy.empty((len(thetav), len(k)))
+    cossin = numpy.zeros((len(thetav), len(k)))
     cossin[:, m >= 0] = cos(phiv[:, numpy.newaxis] @ numpy.abs(m[numpy.newaxis, :]))[:, m >= 0]
     cossin[:, m < 0] = sin(phiv[:, numpy.newaxis] @ numpy.abs(m[numpy.newaxis, :]))[:, m < 0]
 
-    sinmcos = numpy.empty_like(cossin)
+    sinmcos = numpy.zeros_like(cossin)
     sinmcos[:, m >= 0] = sin(phiv[:, numpy.newaxis] @ numpy.abs(m[numpy.newaxis, :]))[:, m >= 0]
     sinmcos[:, m < 0] = -cos(phiv[:, numpy.newaxis] @ numpy.abs(m[numpy.newaxis, :]))[:, m < 0]
 
     costhetav = cos(thetav)[:, numpy.newaxis]
     sinthetav = sin(thetav)[:, numpy.newaxis]
 
-    leg = numpy.empty_like(cossin)
-    dleg = numpy.empty_like(cossin)
+    leg = numpy.zeros_like(cossin)
+    dleg = numpy.zeros_like(cossin)
 
     for i, (mi_abs, ni, sch) in enumerate(zip(m_abs,n,schmidt)):
         leg[:, i] = lpmv(mi_abs, ni, costhetav[:,0])*sch
@@ -278,6 +294,8 @@ def condition_matrix_dif(x, y, z, f, h, Ax, Ay, Az):
 
 def invert_dif(thetav, phiv, D, I, F, degrees, g0=None, steps=5):
 
+    # reescalar intensidad pls
+
     k, m, n = degrees
     
     if g0 is None:
@@ -288,22 +306,42 @@ def invert_dif(thetav, phiv, D, I, F, degrees, g0=None, steps=5):
     Ax, Ay, Az = condition_matrix_xyz(thetav, phiv, degrees)
 
     D_0, I_0, F_0 = D, I, F
-    dif_0 = numpy.concatenate((D_0, I_0, F_0))
+
+    D_0 = D_0[~numpy.isnan(D_0)]
+    I_0 = I_0[~numpy.isnan(I_0)]
+    F_0 = F_0[~numpy.isnan(F_0)]
+    
+    #dif_0 = numpy.concatenate((D_0, I_0, F_0))
+    di_0 = numpy.concatenate((D_0, I_0))
 
     for iteration in range(steps):
         Bx, By, Bz = xyzfield(k, m, n, g, thetav, phiv)
 
         D_model, I_model, F_model, H_model = xyz.xyz2difh(Bx, By, Bz)
 
-        Adif = numpy.concatenate(condition_matrix_dif(Bx, By, Bz, F_model, H_model, Ax, Ay, Az), axis=0)
-        dif = numpy.concatenate((D_model, I_model, F_model), axis=0)
+        Ad, Ai, Af = condition_matrix_dif(Bx, By, Bz, F_model, H_model, Ax, Ay, Az)
+        Adif = numpy.concatenate((Ad[~numpy.isnan(D_0), :], Ai[~numpy.isnan(I_0), :], Af[~numpy.isnan(F_0), :]),
+                                 axis=0)
 
-        delta = dif - dif_0
+        D_model = D_model[~numpy.isnan(D_0)]
+        I_model = I_model[~numpy.isnan(I_0)]
+        F_model = F_model[~numpy.isnan(F_0)]
+        
+        di = numpy.concatenate((D_model, I_model), axis=0)
 
-        # estoy haciendo alguna mierda mala
-        g = g + (numpy.linalg.inv(Adif.T @ Adif) @ Adif.T) @ delta
-        #g = g - numpy.linalg.lstsq(Adif, delta)[0]
-        print(sum(abs(delta)), delta[0])
+        #corregir diferencias 360 -> 0
+        di_delta = numpy.arctan2(numpy.sin(di-di_0), numpy.cos(di-di_0))
+        f_delta = F_model - F_0
+
+        delta = numpy.concatenate((di_delta, f_delta), axis=0)
+
+        #hmmmmm
+        #g = g - (numpy.linalg.pinv(Adif.T @ Adif) @ Adif.T) @ delta
+        solution = numpy.linalg.lstsq(Adif, delta)
+        g = g - solution[0]
+        sys.stdout.write("\r")
+        sys.stdout.write(str(sum(abs(delta))))
+        #print(g[:4])
 
     if (sum(abs(delta)) > 1000): warnings.warn("inversion might not have converged (╯°□°)╯︵ ┻━┻")
     return g
