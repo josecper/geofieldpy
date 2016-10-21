@@ -65,8 +65,10 @@ def spline_rep(times, spline_coefs, knot_points, summing=True):
 
     y = bspline((tgrid-kgrid)/width)*spline_coefs
 
-    
-    return y.sum(axis=1)
+    if summing:
+        return y.sum(axis=1)
+    else:
+        return y
 
 def deboor_base(k,t,d):
     
