@@ -10,6 +10,9 @@ import warnings
 from matplotlib import pyplot
 import sys
 
+#debug
+import memory_profiler
+
 sin = numpy.sin; cos = numpy.cos; lpmv = scipy.special.lpmv
 
 
@@ -37,10 +40,8 @@ def degree(ms, theta0, max_k, solve_step=0.01, overstep_size = 1.0) -> list:
     lpmv = scipy.special.lpmv
     cos = scipy.cos
 
-    #arbitrary magical number
     maxrange = max_k*10
 
-    #bendito sea el señor
     ms = numpy.atleast_1d(ms)
     roots = []
 
@@ -114,7 +115,7 @@ def rotation_matrix(theta_pole, phi_pole, invert = False) -> numpy.array:
                       (0. , 1. , 0. ),
                       (-sin(theta_pole), 0. , cos(theta_pole))))
 
-    #quitar la T por la gloria de tu madrer
+    #quitar la T
     rz = numpy.array(((cos(phi_pole), sin(phi_pole), 0.),
                      (-sin(phi_pole), cos(phi_pole), 0.),
                      (0. , 0. , 1. ))).T
@@ -129,7 +130,6 @@ def rotate_coords(r, theta, phi, matrix):
     #cartesian
     original = r*numpy.array((sin(theta)*cos(phi), sin(theta)*sin(phi), cos(theta)))
 
-    #do a magic
     x_r, y_r, z_r = matrix @ original
     
     #convert to spherical
@@ -142,7 +142,8 @@ def rotate_vector(x, y, z, pole_theta, pole_phi, theta, phi, theta_rot, invert =
 
     #guay
     angle = numpy.arcsin(sin(pole_theta)*sin(numpy.arctan2(sin(phi-pole_phi), cos(phi-pole_phi)))/sin(theta_rot))
-    if (pole_theta > theta):
+    #if (pole_theta > theta):
+    if(cos(theta_rot)*cos(theta) > cos(pole_theta)):
         angle = -angle + numpy.pi
 
     if invert: angle = -angle
@@ -157,7 +158,9 @@ def rotate_declination(dec, pole_theta, pole_phi, theta, phi, theta_rot, invert 
 
     #ok it works
     angle = numpy.arcsin(sin(pole_theta)*sin(numpy.arctan2(sin(phi-pole_phi), cos(phi-pole_phi)))/sin(theta_rot))
-    angle[pole_theta > theta] = -angle[pole_theta > theta] + numpy.pi
+    #angle[pole_theta > theta] = -angle[pole_theta > theta] + numpy.pi
+    angle[cos(theta_rot)*cos(theta) > cos(pole_theta)] = -angle[cos(theta_rot)*cos(theta) > cos(pole_theta)] \
+                                                         + numpy.pi
 
     if invert: angle = -angle
 
@@ -171,7 +174,9 @@ def xyzfield(k, m, n, gcoefs, thetav, phiv):
     y = x.copy()
     z = x.copy()
 
-    schmidt = schmidt_real(m, n, grid=False)
+    m_abs = numpy.abs(m)
+    
+    schmidt = schmidt_real(m_abs, n, grid=False)
 
     for ki, mi, ni, g, sch in zip(k, m, n, gcoefs, schmidt):
     
@@ -181,7 +186,6 @@ def xyzfield(k, m, n, gcoefs, thetav, phiv):
         sinmcos = numpy.sin(m_abs*phiv) if mi >= 0 else -numpy.cos(m_abs*phiv)
 
         leg = lpmv(m_abs, ni, numpy.cos(thetav))*sch
-        #dleg = numpy.gradient(leg)*len(thetav)/(numpy.max(thetav)) #might be a bad thing
         dleg = dlpmv(m_abs, ni, numpy.cos(thetav))*(-numpy.sin(thetav))*sch
     
         #x += g*cossin*sch*dlpmv(m_abs, ni, numpy.cos(thetav))*(-numpy.sin(thetav))
@@ -246,12 +250,11 @@ def polar_tricontour(scalar, thetav, phiv, theta0, ax, base=None, cmap="bwr", sc
                           vmin=vmin, vmax=vmax)
 
 def condition_matrix_xyz(thetav, phiv, degrees):
-    """ degrees is the dang k, m, n thing """
 
     k, m, n = numpy.array(degrees)
     m_abs = numpy.abs(m)
     cos = numpy.cos; sin = numpy.sin; lpmv = scipy.special.lpmv
-    schmidt = schmidt_real(m, n, grid=False)
+    schmidt = schmidt_real(m_abs, n, grid=False)
 
     cossin = numpy.zeros((len(thetav), len(k)))
     cossin[:, m >= 0] = cos(phiv[:, numpy.newaxis] @ numpy.abs(m[numpy.newaxis, :]))[:, m >= 0]
@@ -274,7 +277,7 @@ def condition_matrix_xyz(thetav, phiv, degrees):
         dleg[:, i] = dlpmv(mi_abs, ni, costhetav[:,0])*sch*(-sinthetav[:,0])
         
     Ax = cossin * dleg
-    Ay = numpy.abs(m) * leg * sinmcos / sinthetav
+    Ay = m_abs * leg * sinmcos / sinthetav
     Az = -(n + 1) * leg * cossin
 
     return Ax, Ay, Az
@@ -284,11 +287,11 @@ def invert_xyz(thetav, phiv, Bx, By, Bz, degrees):
     #build condition matrix
     Axyz = numpy.concatenate(condition_matrix_xyz(thetav, phiv, degrees), axis=0)
 
-    #smash the bros
     Bxyz = numpy.concatenate((Bx, By, Bz), axis=0)
 
     #do a nice invert
     g = (numpy.linalg.inv(Axyz.T @ Axyz) @ Axyz.T) @ Bxyz
+    #g = numpy.linalg.lstsq(Axyz, Bxyz)[0]
 
     return g
 
@@ -348,9 +351,9 @@ def invert_dif(thetav, phiv, D, I, F, degrees, g0=None, steps=5):
         delta = numpy.concatenate((di_delta, f_delta), axis=0)
 
         #hmmmmm
-        #g = g - (numpy.linalg.pinv(Adif.T @ Adif) @ Adif.T) @ delta
-        solution = numpy.linalg.lstsq(Adif, delta)
-        g = g - solution[0]
+        g = g - (numpy.linalg.pinv(Adif.T @ Adif) @ Adif.T) @ delta
+        #solution = numpy.linalg.lstsq(Adif, delta)
+        #g = g - solution[0]
         sys.stdout.write("\r")
         sys.stdout.write(str(numpy.sqrt(sum(delta**2))))
         #DEBUGE
@@ -392,16 +395,17 @@ def xyzfieldt(k, m, n, knots, gcoefs, thetav, phiv, t):
     return x, y, z
 
     
-
+#@memory_profiler.profile
 def invert_dift(thetav, phiv, t, D, I, F, degrees, knots, g0=None, steps=5):
 
     k, m, n = degrees
 
     #n_knots, n_degrees = len(knots)-4, len(k)
+    #knots = bspline.fix_knots(kn, 3)
+    
     n_knots, n_degrees = len(knots), len(k)
     n_coefs = n_knots*n_degrees
     #base = bspline.deboor_base(knots, t, 3)[:, :-4]
-    base = bspline.condition_array(knots, t)    
 
     if g0 is None:
         g0 = numpy.zeros((n_knots, n_degrees))
@@ -411,13 +415,19 @@ def invert_dift(thetav, phiv, t, D, I, F, degrees, knots, g0=None, steps=5):
 
     Ax, Ay, Az = condition_matrix_xyz(thetav, phiv, degrees)
     D_0, I_0, F_0 = D, I, F
-    D_0 = D_0[~numpy.isnan(D_0)]
-    I_0 = I_0[~numpy.isnan(I_0)]
-    F_0 = F_0[~numpy.isnan(F_0)]
+
+    base = numpy.concatenate((bspline.condition_array(knots, t[~numpy.isnan(D)]),
+                              bspline.condition_array(knots, t[~numpy.isnan(I)]),
+                              bspline.condition_array(knots, t[~numpy.isnan(F)])), axis=0)
+
+    D_0 = D_0[~numpy.isnan(D)]
+    I_0 = I_0[~numpy.isnan(I)]
+    F_0 = F_0[~numpy.isnan(F)]
     
     di_0 = numpy.concatenate((D_0, I_0))
 
     for iteration in range(steps):
+        
         #como poner la dependencia del tiempo aquí?
         #con magia
         Bx, By, Bz = xyzfieldt(k, m, n, knots, g, thetav, phiv, t)
@@ -425,16 +435,16 @@ def invert_dift(thetav, phiv, t, D, I, F, degrees, knots, g0=None, steps=5):
 
         Ad, Ai, Af = condition_matrix_dif(Bx, By, Bz, F_model, H_model, Ax, Ay, Az)
         Af = Af / F_model[:, numpy.newaxis]
-        Adif = numpy.concatenate((Ad[~numpy.isnan(D_0), :],
-                                  Ai[~numpy.isnan(I_0), :],
-                                  Af[~numpy.isnan(F_0), :]), axis=0)
+        Adif = numpy.concatenate((Ad[~numpy.isnan(D), :],
+                                  Ai[~numpy.isnan(I), :],
+                                  Af[~numpy.isnan(F), :]), axis=0)
 
-        #quick hack
-        Adif = numpy.concatenate([Adif*numpy.tile(spline,3)[:, numpy.newaxis] for spline in base.T], axis=1)
+        #quick hacc
+        Adif = numpy.concatenate([Adif*spline[:, numpy.newaxis] for spline in base.T], axis=1)
                            
-        D_model = D_model[~numpy.isnan(D_0)]
-        I_model = I_model[~numpy.isnan(I_0)]
-        F_model = F_model[~numpy.isnan(F_0)]
+        D_model = D_model[~numpy.isnan(D)]
+        I_model = I_model[~numpy.isnan(I)]
+        F_model = F_model[~numpy.isnan(F)]
 
         di = numpy.concatenate((D_model, I_model), axis=0)
         di_delta = numpy.arctan2(numpy.sin(di-di_0), numpy.cos(di-di_0))
@@ -445,12 +455,12 @@ def invert_dift(thetav, phiv, t, D, I, F, degrees, knots, g0=None, steps=5):
         solution = numpy.linalg.lstsq(Adif, delta)
         g = g - solution[0].reshape((n_knots, n_degrees))
         #g = g - ((numpy.linalg.pinv(Adif.T @ Adif) @ Adif.T) @ delta).reshape((n_knots, n_degrees))
-        
+
         sys.stdout.write("\r")
+        sys.stdout.write("iteration {0}  : rms = ".format(iteration+1))
         sys.stdout.write(str(numpy.sqrt(sum(delta**2)/len(delta))))
 
         #debuge
-        #fig, ax = pyplot.subplots()
 
         #ax.scatter(t, di_delta[:len(di_delta)//2], color="green")
         #ax.scatter(t, di_delta[len(di_delta)//2:], color="red")

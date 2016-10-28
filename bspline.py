@@ -70,6 +70,9 @@ def spline_rep(times, spline_coefs, knot_points, summing=True):
     else:
         return y
 
+def fix_knots(knots, degree):
+    return numpy.concatenate((numpy.repeat(knots[0], degree), knots, numpy.repeat(knots[-1], degree)))
+    
 def deboor_base(k,t,d):
     
     tgrid, kgrid = numpy.meshgrid(t,k,indexing="ij")
@@ -96,7 +99,7 @@ def deboor_base(k,t,d):
         y = dif_i*deboor_base(k,t,d-1) + dif_im1*deboor_base(k_p1,t,d-1)
 
         #quick
-        y[-1,:-d] = y[0, -(d+1)::-1]
+        y[-1,:-1-d] = y[0, -(d+2)::-1]
     
     return y
 
