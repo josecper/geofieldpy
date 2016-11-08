@@ -3,6 +3,7 @@ import numpy.linalg
 import scipy
 import scipy.interpolate
 import scipy.special
+import scipy.sparse
 import scipy.optimize
 import bspline
 import xyzfield as xyz
@@ -20,6 +21,14 @@ def dlpmv(m, n, z):
     
     """evaluate d/dz of the associated legendre function of order m and degree n at z """
     return 1/(z**2-1)*(n*z*lpmv(m,n,z) - (m+n)*lpmv(m, n-1, z))
+
+def dnlpmv(m, n, z, delta=0.00001):
+    n = numpy.array(n)
+    return (lpmv(m, n+delta, z)-lpmv(m, n-delta, z))/(2*delta)
+
+def dndlpmv(m, n, z, delta=0.00001):
+    n = numpy.array(n)
+    return (dlpmv(m, n+delta, z)-dlpmv(m, n-delta, z))/(2*delta)
 
 def step_solve(func, interval, args=(), step=0.02) -> numpy.ndarray:
 
@@ -282,15 +291,20 @@ def condition_matrix_xyz(thetav, phiv, degrees):
 
     return Ax, Ay, Az
 
-def invert_xyz(thetav, phiv, Bx, By, Bz, degrees):
+def invert_xyz(thetav, phiv, Bx, By, Bz, degrees, reg_coef=0, theta_0 = None):
 
     #build condition matrix
     Axyz = numpy.concatenate(condition_matrix_xyz(thetav, phiv, degrees), axis=0)
 
     Bxyz = numpy.concatenate((Bx, By, Bz), axis=0)
 
+    if(reg_coef != 0):
+        reg_matrix = spatial_reg(*degrees, theta_0).toarray()
+    else:
+        reg_matrix = 0.0
+
     #do a nice invert
-    g = (numpy.linalg.inv(Axyz.T @ Axyz) @ Axyz.T) @ Bxyz
+    g = (numpy.linalg.inv(Axyz.T @ Axyz + reg_coef*reg_matrix) @ Axyz.T) @ Bxyz
     #g = numpy.linalg.lstsq(Axyz, Bxyz)[0]
 
     return g
@@ -327,7 +341,7 @@ def invert_dif(thetav, phiv, D, I, F, degrees, g0=None, steps=5):
     
     #dif_0 = numpy.concatenate((D_0, I_0, F_0))
     di_0 = numpy.concatenate((D_0, I_0))
-
+    
     for iteration in range(steps):
         Bx, By, Bz = xyzfield(k, m, n, g, thetav, phiv)
 
@@ -356,9 +370,7 @@ def invert_dif(thetav, phiv, D, I, F, degrees, g0=None, steps=5):
         #g = g - solution[0]
         sys.stdout.write("\r")
         sys.stdout.write(str(numpy.sqrt(sum(delta**2))))
-        #DEBUGE
         
-        #print(g[:4])
 
     if (sum(abs(delta**2)) > 10000): warnings.warn("inversion might not have converged (╯°□°)╯︵ ┻━┻")
     return g
@@ -396,7 +408,8 @@ def xyzfieldt(k, m, n, knots, gcoefs, thetav, phiv, t):
 
     
 #@memory_profiler.profile
-def invert_dift(thetav, phiv, t, D, I, F, degrees, knots, g0=None, steps=5):
+def invert_dift(thetav, phiv, t, D, I, F, degrees, knots, g0=None,
+                reg_coef_spatial = 0, reg_coef_time = 0, theta_0 = None, steps=5):
 
     k, m, n = degrees
 
@@ -426,6 +439,13 @@ def invert_dift(thetav, phiv, t, D, I, F, degrees, knots, g0=None, steps=5):
     
     di_0 = numpy.concatenate((D_0, I_0))
 
+    if (reg_coef_spatial != 0) or (reg_coef_time != 0):
+        reg_matrix = full_reg(spatial_reg(k, m, n, theta_0), time_reg(knots),
+                              coef_L=reg_coef_spatial, coef_S=reg_coef_time)
+    else:
+        reg_matrix = 0.0
+
+
     for iteration in range(steps):
         
         #como poner la dependencia del tiempo aquí?
@@ -452,9 +472,9 @@ def invert_dift(thetav, phiv, t, D, I, F, degrees, knots, g0=None, steps=5):
 
         delta = numpy.concatenate((di_delta, f_delta), axis=0)
 
-        solution = numpy.linalg.lstsq(Adif, delta)
-        g = g - solution[0].reshape((n_knots, n_degrees))
-        #g = g - ((numpy.linalg.pinv(Adif.T @ Adif) @ Adif.T) @ delta).reshape((n_knots, n_degrees))
+        #solution = numpy.linalg.lstsq(Adif, delta)
+        #g = g - solution[0].reshape((n_knots, n_degrees))
+        g = g - ((numpy.linalg.pinv(Adif.T @ Adif + reg_matrix) @ Adif.T) @ delta).reshape((n_knots, n_degrees))
 
         sys.stdout.write("\r")
         sys.stdout.write("iteration {0}  : rms = ".format(iteration+1))
@@ -474,3 +494,53 @@ def invert_dift(thetav, phiv, t, D, I, F, degrees, knots, g0=None, steps=5):
         
     if (sum(abs(delta**2)) > 10000): warnings.warn("a bad thing is happening ヽ( `д´*)ノ")
     return g
+
+def spatial_reg(k, m, n, theta_0):
+
+    #spatial regularization
+    n0, n1 = numpy.meshgrid(n, n, indexing="ij")
+    m0, m1 = numpy.meshgrid(m, m, indexing="ij")
+    k0, k1 = numpy.meshgrid(k, k, indexing="ij")
+
+    L = numpy.zeros_like(n0)
+
+    cond_0 = ((m0 == m1) & (numpy.mod(k0 - m0, 2) == 0) & (numpy.mod(k1-m0, 2) != 0))
+    cond_1 = ((k0 == k1) & (m0 == m1) & (numpy.mod(k0 - m0, 2) == 0))
+    cond_2 = ((k0 == k1) & (m0 == m1) & (numpy.mod(k0 - m0, 2) != 0))
+
+    # factor misterioso, ver korte 2003
+    a = numpy.empty_like(m0)
+    a[m0 == 0] = 1/(1-cos(theta_0))
+    a[m0 != 0] = 0.5/(1-cos(theta_0))
+
+    #squared normalization
+    square_sch = schmidt_real(m0, n0, grid=False)*schmidt_real(m0, n1, grid=False)
+    
+    #legendre poly * derivative (* chain rule)
+    pdp = lpmv(m0, n0, cos(theta_0))*dlpmv(m0, n1, cos(theta_0))*square_sch*(-sin(theta_0))
+    pdndp = lpmv(m0, n0, cos(theta_0))*dndlpmv(m0, n1, cos(theta_0))*square_sch*(-sin(theta_0))
+    dpdnp = dlpmv(m0, n1, cos(theta_0))*dnlpmv(m0, n0, cos(theta_0))*square_sch*(-sin(theta_0))
+
+    L[cond_0] = (1 - (n0[cond_0] + n1[cond_0] + 2) / (n1[cond_0] - n0[cond_0])) *\
+                a[cond_0] / 2 * sin(theta_0)*pdp[cond_0]
+
+    L[cond_1] = -(n0[cond_1] + 1) * a[cond_1] * sin(theta_0) * pdndp[cond_1]
+    L[cond_2] = (n0[cond_2] + 1) * a[cond_2] * sin(theta_0) * dpdnp[cond_2]
+
+    L = scipy.sparse.csr_matrix(L)
+    return L
+
+def time_reg(knots):
+    n = len(knots)
+    S = numpy.diff(numpy.eye(n),2,axis=0)
+    return S.T @ S
+
+def full_reg(L, S, coef_L, coef_S):
+
+    n_knots = S.shape[0]
+    n_degrees = L.shape[0]
+
+    R = coef_L*numpy.tile(L.toarray(), (n_knots, n_knots)) + coef_S*numpy.repeat(numpy.repeat(S, n_degrees, axis=0),
+                                                                                 n_degrees, axis=1)
+    
+    return R
