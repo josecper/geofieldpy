@@ -420,12 +420,6 @@ def invert_dift(thetav, phiv, t, D, I, F, degrees, knots, g0=None,
     n_coefs = n_knots*n_degrees
     #base = bspline.deboor_base(knots, t, 3)[:, :-4]
 
-    if g0 is None:
-        g0 = numpy.zeros((n_knots, n_degrees))
-        g0[:, 0] = -1000.0
-
-    g = g0.copy()
-
     Ax, Ay, Az = condition_matrix_xyz(thetav, phiv, degrees)
     D_0, I_0, F_0 = D, I, F
 
@@ -436,6 +430,14 @@ def invert_dift(thetav, phiv, t, D, I, F, degrees, knots, g0=None,
     D_0 = D_0[~numpy.isnan(D)]
     I_0 = I_0[~numpy.isnan(I)]
     F_0 = F_0[~numpy.isnan(F)]
+
+    if g0 is None:
+        g0 = numpy.zeros((n_knots, n_degrees))
+        can_get_z = ((~numpy.isnan(I)) & (~numpy.isnan(F)))
+        avg_z = numpy.average(F[can_get_z] * sin(I[can_get_z]))
+        g0[:, 0] = avg_z
+
+    g = g0.copy()
     
     di_0 = numpy.concatenate((D_0, I_0))
 
