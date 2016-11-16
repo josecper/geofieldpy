@@ -305,7 +305,7 @@ def invert_xyz(thetav, phiv, Bx, By, Bz, degrees, reg_coef=0, theta_0 = None):
 
     #do a nice invert
     g = (numpy.linalg.inv(Axyz.T @ Axyz + reg_coef*reg_matrix) @ Axyz.T) @ Bxyz
-    #g = numpy.linalg.lstsq(Axyz, Bxyz)[0]
+    #g = numpy.linalg.lstsq(Axyz, Bxyz)[]0
 
     return g
 
@@ -435,7 +435,7 @@ def invert_dift(thetav, phiv, t, D, I, F, degrees, knots, g0=None,
         g0 = numpy.zeros((n_knots, n_degrees))
         can_get_z = ((~numpy.isnan(I)) & (~numpy.isnan(F)))
         avg_z = numpy.average(F[can_get_z] * sin(I[can_get_z]))
-        g0[:, 0] = avg_z
+        g0[:, 0] = -avg_z
 
     g = g0.copy()
     
@@ -461,7 +461,6 @@ def invert_dift(thetav, phiv, t, D, I, F, degrees, knots, g0=None,
                                   Ai[~numpy.isnan(I), :],
                                   Af[~numpy.isnan(F), :]), axis=0)
 
-        #quick hacc
         Adif = numpy.concatenate([Adif*spline[:, numpy.newaxis] for spline in base.T], axis=1)
                            
         D_model = D_model[~numpy.isnan(D)]
@@ -542,7 +541,7 @@ def full_reg(L, S, coef_L, coef_S):
     n_knots = S.shape[0]
     n_degrees = L.shape[0]
 
-    R = coef_L*numpy.tile(L.toarray(), (n_knots, n_knots)) + coef_S*numpy.repeat(numpy.repeat(S, n_degrees, axis=0),
-                                                                                 n_degrees, axis=1)
+    R = coef_L*numpy.tile(L.toarray(), (n_knots, n_knots)) + \
+        coef_S*numpy.repeat(numpy.repeat(S, n_degrees, axis=0), n_degrees, axis=1)
     
     return R
