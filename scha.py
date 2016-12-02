@@ -478,6 +478,7 @@ def invert_dift(thetav, phiv, t, D, I, F, degrees, knots, g0=None,
         g = g - ((numpy.linalg.pinv(Adif.T @ Adif + reg_matrix) @ Adif.T) @ delta).reshape((n_knots, n_degrees))
 
         sys.stdout.write("\r")
+        sys.stdout.write("[{: <20}]  ".format("#"*int((iteration/steps)*20+1)))
         sys.stdout.write("iteration {0}  : rms = ".format(iteration+1))
         sys.stdout.write(str(numpy.sqrt(sum(delta**2)/len(delta))))
 
@@ -496,7 +497,7 @@ def invert_dift(thetav, phiv, t, D, I, F, degrees, knots, g0=None,
     if (sum(abs(delta**2)) > 10000): warnings.warn("a bad thing is happening ヽ( `д´*)ノ")
     return g
 
-def spatial_reg(k, m, n, theta_0):
+def spatial_reg(k, m, n, theta_0, magical=True):
 
     #spatial regularization
     n0, n1 = numpy.meshgrid(n, n, indexing="ij")
@@ -522,8 +523,9 @@ def spatial_reg(k, m, n, theta_0):
     pdndp = lpmv(m0, n0, cos(theta_0))*dndlpmv(m0, n1, cos(theta_0))*square_sch*(-sin(theta_0))
     dpdnp = dlpmv(m0, n1, cos(theta_0))*dnlpmv(m0, n0, cos(theta_0))*square_sch*(-sin(theta_0))
 
-    L[cond_0] = (1 - (n0[cond_0] + n1[cond_0] + 2) / (n1[cond_0] - n0[cond_0])) *\
-                a[cond_0] / 2 * sin(theta_0)*pdp[cond_0]
+    if not magical:
+        L[cond_0] = (1 - (n0[cond_0] + n1[cond_0] + 2) / (n1[cond_0] - n0[cond_0])) *\
+                    a[cond_0] / 2 * sin(theta_0)*pdp[cond_0]
 
     L[cond_1] = -(n0[cond_1] + 1) * a[cond_1] * sin(theta_0) * pdndp[cond_1]
     L[cond_2] = (n0[cond_2] + 1) * a[cond_2] * sin(theta_0) * dpdnp[cond_2]
