@@ -366,6 +366,7 @@ def invert_dif(thetav, phiv, D, I, F, degrees, g0=None, steps=5):
 
         #hmmmmm
         g = g - (numpy.linalg.pinv(Adif.T @ Adif) @ Adif.T) @ delta
+
         #solution = numpy.linalg.lstsq(Adif, delta)
         #g = g - solution[0]
         sys.stdout.write("\r")
@@ -437,13 +438,15 @@ def invert_dift(thetav, phiv, t, D, I, F, degrees, knots, g0=None,
         avg_z = numpy.average(F[can_get_z] * sin(I[can_get_z]))
         g0[:, 0] = -avg_z
 
-    g = g0.copy()
-    
+    g = g0.copy()    
     di_0 = numpy.concatenate((D_0, I_0))
 
     if (reg_coef_spatial != 0) or (reg_coef_time != 0):
-        reg_matrix = full_reg(spatial_reg(k, m, n, theta_0), time_reg(knots),
-                              coef_L=reg_coef_spatial, coef_S=reg_coef_time)
+    #if True:
+        #reg_matrix = full_reg(time_reg(k, m, n, knots, theta_0), spatial_reg(k, m, n, theta_0),
+        #                      coef_spatial=reg_coef_spatial, coef_time=reg_coef_time)
+        reg_matrix = reg_coef_spatial*numpy.tile(spatial_reg(k,m,n,theta_0).toarray(), (n_knots, n_knots))+\
+                     reg_coef_time*time_reg(k, m, n, knots, theta_0)
     else:
         reg_matrix = 0.0
 
@@ -475,14 +478,31 @@ def invert_dift(thetav, phiv, t, D, I, F, degrees, knots, g0=None,
 
         #solution = numpy.linalg.lstsq(Adif, delta)
         #g = g - solution[0].reshape((n_knots, n_degrees))
-        g = g - ((numpy.linalg.pinv(Adif.T @ Adif + reg_matrix) @ Adif.T) @ delta).reshape((n_knots, n_degrees))
+        #g = g - ((numpy.linalg.pinv(Adif.T @ Adif + reg_matrix) @ Adif.T) @ delta).reshape((n_knots, n_degrees))
+
+        #version alternativa hippie (no probada con regularización pero probablemente sea mejor)
+        #solution = numpy.linalg.lstsq(Adif.T @ Adif + reg_matrix, Adif.T @ delta)
+
+
+
+        #probar esta cosa, me resulta sospechosa (22/12/16)
+
+        if (reg_coef_spatial != 0.0) or (reg_coef_time != 0.0):
+        #if True:
+            g_flat = g.reshape((n_knots*n_degrees))
+            solution = numpy.linalg.lstsq(Adif.T @ Adif + reg_matrix,
+                                          (Adif.T @ delta - reg_matrix @ g_flat))
+        else:
+            solution = numpy.linalg.lstsq(Adif.T @ Adif, Adif.T @ delta)
+            
+        g = g - solution[0].reshape((n_knots, n_degrees))        
 
         sys.stdout.write("\r")
         sys.stdout.write("[{: <20}]  ".format("#"*int((iteration/steps)*20+1)))
         sys.stdout.write("iteration {0}  : rms = ".format(iteration+1))
         sys.stdout.write(str(numpy.sqrt(sum(delta**2)/len(delta))))
 
-        #debuge
+        #debug
 
         #ax.scatter(t, di_delta[:len(di_delta)//2], color="green")
         #ax.scatter(t, di_delta[len(di_delta)//2:], color="red")
@@ -533,17 +553,65 @@ def spatial_reg(k, m, n, theta_0, magical=True):
     L = scipy.sparse.csr_matrix(L)
     return L
 
-def time_reg(knots):
-    n = len(knots)
-    S = numpy.diff(numpy.eye(n),2,axis=0)
-    return S.T @ S
+def time_reg(k, m, n, knots, theta_0, r=6371.2):
 
-def full_reg(L, S, coef_L, coef_S):
+    # regularización temporal usando d²/dt² (<B²r>) (ver korte & holme 2003)
+    # esta forma de regularizar es un poco sospechosa cuando los splines son raros (Cox-de Boor, etc)
+    # the death march of time reg continues
 
-    n_knots = S.shape[0]
-    n_degrees = L.shape[0]
-
-    R = coef_L*numpy.tile(L.toarray(), (n_knots, n_knots)) + \
-        coef_S*numpy.repeat(numpy.repeat(S, n_degrees, axis=0), n_degrees, axis=1)
+    Rt = 6371.2
     
-    return R
+    n_knots = len(knots)
+    n_degrees = len(k)
+    S = numpy.diff(numpy.eye(n_knots),2,axis=0)
+
+    S_sq = S.T @ S
+    
+    n0, n1 = numpy.meshgrid(n, n, indexing="ij")
+    m0, m1 = numpy.meshgrid(numpy.abs(m), numpy.abs(m), indexing="ij")
+    k0, k1 = numpy.meshgrid(k, k, indexing="ij")
+
+    L = numpy.zeros_like(n0)
+
+    c_0 = ((m0 == m1) & (numpy.mod(k0 - m0, 2) == 0) & (numpy.mod(k1-m0, 2) != 0))
+    c_1 = ((k0 == k1) & (m0 == m1) & (numpy.mod(k0 - m0, 2) == 0))
+    c_2 = ((k0 == k1) & (m0 == m1) & (numpy.mod(k0 - m0, 2) != 0))
+
+    # factor misterioso, ver korte 2003
+    a = numpy.empty_like(m0)
+    a[m0 == 0] = 1/(1-cos(theta_0))
+    a[m0 != 0] = 0.5/(1-cos(theta_0))
+
+    #squared normalization factor
+    square_sch = schmidt_real(m0, n0, grid=False)*schmidt_real(m1, n1, grid=False)
+    
+    #legendre poly * derivative (* chain rule)
+    pdp = lpmv(m0, n0, cos(theta_0))*dlpmv(m1, n1, cos(theta_0))*square_sch*(-sin(theta_0))
+    pdndp = lpmv(m0, n0, cos(theta_0))*dndlpmv(m1, n1, cos(theta_0))*square_sch*(-sin(theta_0))
+    dpdnp = dlpmv(m1, n1, cos(theta_0))*dnlpmv(m0, n0, cos(theta_0))*square_sch*(-sin(theta_0))
+    dpp = dlpmv(m0, n0, cos(theta_0))*square_sch*(-sin(theta_0))*lpmv(m1, n1, cos(theta_0))
+
+    F = numpy.zeros((n_degrees, n_degrees))
+
+    F[c_0] = -sin(theta_0)/((n0[c_0]-n1[c_0])*(n0[c_0]+n1[c_0]+1))*dpp[c_0] 
+    F[c_1] = -sin(theta_0)/(2*n0[c_1]+1)*pdndp[c_1]
+    F[c_2] = sin(theta_0)/(2*n0[c_2]+1)*dpdnp[c_2]
+
+    L = (n0+1)*(n1+1)*a*F
+    L = numpy.tile(L, (n_knots, n_knots))*numpy.repeat(numpy.repeat(S_sq, n_degrees, axis=0), n_degrees, axis=1)
+    
+    return L
+
+def time_reg_global():
+    pass
+
+def full_reg(Mreg_T, Mreg_S, coef_time, coef_spatial):
+
+    #n_knots = S.shape[0]
+    #n_degrees = L.shape[0]
+
+    #R = coef_L*numpy.tile(L.toarray(), (n_knots, n_knots)) + \
+    #    coef_S*numpy.repeat(numpy.repeat(S, n_degrees, axis=0), n_degrees, axis=1)
+    n_knots = Mreg_T.shape[0]//Mreg_S.shape[0]
+    print(n_knots)    
+    return coef_time*Mreg_T + coef_spatial*numpy.tile(Mreg_S, (n_knots, n_knots))
