@@ -12,8 +12,6 @@ from matplotlib import pyplot
 import sys
 
 #debug
-import memory_profiler
-
 sin = numpy.sin; cos = numpy.cos; lpmv = scipy.special.lpmv
 
 
@@ -175,6 +173,14 @@ def rotate_declination(dec, pole_theta, pole_phi, theta, phi, theta_rot, invert 
 
     return dec + angle
 
+def rotate_dif(r, theta, phi, dec, theta_c, phi_c, towards_pole=True):
+    """convenience function. returns rotated r, theta_r, phi_r, declination"""
+    rot_mat = rotation_matrix(theta_c, phi_c, invert=not towards_pole)
+    r, theta_r, phi_r = rotate_coords(r, theta, phi, rot_mat)
+    dec_r = rotate_declination(dec, theta_c, phi_c, theta, phi, theta_r, invert=towards_pole)
+    return r, theta_r, phi_r, dec_r
+    
+
 def xyzfield(k, m, n, gcoefs, thetav, phiv):    
     lpmv = scipy.special.lpmv
 
@@ -305,7 +311,7 @@ def invert_xyz(thetav, phiv, Bx, By, Bz, degrees, reg_coef=0, theta_0 = None):
 
     #do a nice invert
     g = (numpy.linalg.inv(Axyz.T @ Axyz + reg_coef*reg_matrix) @ Axyz.T) @ Bxyz
-    #g = numpy.linalg.lstsq(Axyz, Bxyz)[]0
+    #g = numpy.linalg.lstsq(Axyz, Bxyz)[0]
 
     return g
 
