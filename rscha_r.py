@@ -8,17 +8,79 @@ from numpy import cos, sin
 from scipy.special import lpmv
 from scha import condition_matrix_dif
 
-a_ellip = 6371.137
+a_r = 6371.2
+a_ellip = 6378.137
 b_ellip = 6356.752
 
-def mehler_condition_matrix_xyz(thetav, phiv, m, theta_0):
+def rscha_condition_matrix_dif(kmn_leg_in, kmn_leg_ex, m_mehler, rv, thetav, phiv, theta_0, Bx_ref, By_ref, Bz_ref, normalize=True):
+
+    k_in, m_in, n_in = kmn_leg_in
+    k_ex, m_ex, n_ex = kmn_leg_ex
+    ncoefs_in = len(k_in)
+    ncoefs_ex = len(k_ex)
+    ncoefs_meh = len(m_mehler)
+    ndatos = len(rv)
+    
+    kmn_empty = ((), (), ())
+    Ax_leg_in = numpy.zeros((ndatos, ncoefs_in))
+    Ay_leg_in = Ax_leg_in.copy()
+    Az_leg_in = Ax_leg_in.copy()
+
+    for i, (ki, mi, ni) in enumerate(zip(k_in, m_in, n_in)):
+        kmni = ((ki,), (mi,), (ni,))
+        Ax_leg_in[:, i], Ay_leg_in[:, i], Az_leg_in[:, i] = leg_field(kmni, kmn_empty,
+                                                                      (1,), (), rv, thetav, phiv)
+
+    Ax_leg_ex = numpy.zeros((ndatos, ncoefs_ex))
+    Ay_leg_ex = Ax_leg_ex.copy()
+    Az_leg_ex = Ax_leg_ex.copy()
+
+    for i, (ki, mi, ni) in enumerate(zip(k_ex, m_ex, n_ex)):
+        kmni = ((ki,), (mi,), (ni,))
+        Ax_leg_ex[:, i], Ay_leg_ex[:, i], Az_leg_ex[:, i] = leg_field(kmn_empty, kmni,
+                                                                      (), (1,), rv, thetav, phiv)
+
+    Ax_meh = numpy.zeros((ndatos, ncoefs_meh))
+    Ay_meh = Ax_meh.copy()
+    Az_meh = Ax_meh.copy()
+
+    for i, mi in enumerate(m_mehler):
+        Ax_meh[:, i], Ay_meh[:, i], Az_meh[:, i] = mehler_field((mi,), (1,), rv, thetav, phiv, theta_0)
+    
+    Ax = numpy.concatenate((Ax_leg_in, Ax_leg_ex, Ax_meh), axis=1)
+    Ay = numpy.concatenate((Ay_leg_in, Ay_leg_ex, Ay_meh), axis=1)
+    Az = numpy.concatenate((Az_leg_in, Az_leg_ex, Az_meh), axis=1)
+    #Axyz = numpy.concatenate((Ax, Ay, Az), axis=0)
+
+    del Ax_meh, Ay_meh, Az_meh, Ax_leg_ex, Ay_leg_ex, Az_leg_ex, Ax_leg_in, Ay_leg_in, Az_leg_in
+
+    # ahora a hacer el dif
+    # normalizar el campo
+    F_ref_n = numpy.sqrt(Bx_ref**2 + By_ref**2 + Bz_ref**2)
+
+    if normalize:
+        F_avg = numpy.average(F_ref_n)
+    else:
+        F_avg = 1
+        
+    F_ref_n = F_ref_n / F_avg
+    Bx_ref_n = Bx_ref / F_avg
+    By_ref_n = By_ref / F_avg
+    Bz_ref_n = Bz_ref / F_avg
+    H_ref_n = numpy.sqrt(Bx_ref_n**2+By_ref_n**2)
+
+    Adif = scha.condition_matrix_dif(Bx_ref_n, By_ref_n, Bz_ref_n, F_ref_n, H_ref_n, Ax, Ay, Az)
+    return Adif
+    
+
+def mehler_condition_matrix_xyz(rv, thetav, phiv, m, theta_0):
     """
     Mehler functions base condition matrix [(3*ndata) x ncoefs]. This is to be
     concatenated to the usual Legendre condition matrix to solve the inverse
     problem.
     """
 
-    #esto es la parte que va multiplicada por G, H.
+    # esto es la parte que va multiplicada por G, H.
     
     #X = 1/r*dV/dtheta
     Ax = numpy.zeros ((len(thetav), len(m)))
@@ -36,12 +98,50 @@ def mehler_condition_matrix_xyz(thetav, phiv, m, theta_0):
         cossin = cos(mm_abs*phiv) if mm >= 0 else sin(mm_abs*phiv)
         sinmcos = sin(mm_abs*phiv) if mm >= 0 else -cos(mm_abs*phiv)
         
-        Ax[:,i] = mehler_dp*cossin
-        Ay[:,i] = mm_abs/sin(thetav)*mehler_p*sinmcos
-        #Az[:,i] = -0.5*mehler_p*cossin #magia chunga
+        Ax[:,i] = r_mehler(rv)*mehler_dp*cossin
+        Ay[:,i] = r_mehler(rv)*mm_abs/sin(thetav)*mehler_p*sinmcos
+        Az[:,i] = dr_mehler(rv)*mehler_p*cossin #magia chunga
 
     Axyz = numpy.concatenate ((Ax,Ay,Az), axis=0)
     return Axyz
+
+def legendre_condition_matrix_xyz(rv, thetav, phiv, degrees):
+
+    #wRONG
+
+    k, m, n = numpy.array(degrees)
+    m_abs = numpy.abs(m)
+    cos = numpy.cos; sin = numpy.sin; lpmv = scipy.special.lpmv
+    schmidt = numpy.atleast_1d(scha.schmidt_real(m_abs, n, grid=False))
+
+    cossin = numpy.zeros((len(thetav), len(k)))
+    cossin[:, m >= 0] = cos(phiv[:, numpy.newaxis] @ numpy.abs(m[numpy.newaxis, :]))[:, m >= 0]
+    cossin[:, m < 0] = sin(phiv[:, numpy.newaxis] @ numpy.abs(m[numpy.newaxis, :]))[:, m < 0]
+
+    sinmcos = numpy.zeros_like(cossin)
+    sinmcos[:, m >= 0] = sin(phiv[:, numpy.newaxis] @ numpy.abs(m[numpy.newaxis, :]))[:, m >= 0]
+    sinmcos[:, m < 0] = -cos(phiv[:, numpy.newaxis] @ numpy.abs(m[numpy.newaxis, :]))[:, m < 0]
+
+    costhetav = cos(thetav)[:, numpy.newaxis]
+    sinthetav = sin(thetav)[:, numpy.newaxis]
+    rsa = (a_r/rv)[:, numpy.newaxis]
+
+    leg = numpy.zeros_like(cossin)
+    dleg = numpy.zeros_like(cossin)
+    ra = leg.copy()
+    dra = leg.copy()
+    
+    for i, (mi_abs, ni, sch) in enumerate(zip(m_abs,n,schmidt)):
+        leg[:, i] = lpmv(mi_abs, ni, costhetav[:,0])*sch
+        dleg[:, i] = scha.dlpmv(mi_abs, ni, costhetav[:,0])*sch*(-sinthetav[:,0])
+        ra[:, i] = rsa[:,0]**(ni+1)
+        dra[:,i] = rsa[:,0]**(ni+2)
+        
+    Ax = cossin * dleg * ra
+    Ay = m_abs * leg * sinmcos / sinthetav * ra
+    Az = -(n + 1) * leg * cossin * dra
+
+    return Ax, Ay, Az
 
 #ha ha whoops you died oh well
 
@@ -215,9 +315,74 @@ def invert_dif_reg(thetav, phiv, D, I, F, kmn_legendre, m_mehler, theta_0, g0=-1
         #yeah
             
     return g
+
+def leg_field(kmn_in, kmn_ext, gcoefs_in, gcoefs_ext, rv, thetav, phiv):
+
+    k_in, m_in, n_in = kmn_in
+    k_ext, m_ext, n_ext = kmn_ext
     
+    lpmv = scipy.special.lpmv
+
+    x = numpy.zeros_like(thetav)
+    y = x.copy()
+    z = x.copy()
+  
+    schmidt_in = numpy.atleast_1d(scha.schmidt_real(m_in, n_in, grid=False))
+    schmidt_ext = numpy.atleast_1d(scha.schmidt_real(m_ext, n_ext, grid=False))
+
+    for ki, mi, ni, g, sch in zip(k_in, m_in, n_in, gcoefs_in, schmidt_in):
     
-def synth_field(kmn_legendre, m_mehler, gp, thetav, phiv, theta_0):
+        m_abs = abs(mi)
+    
+        cossin = numpy.cos(m_abs*phiv) if mi >= 0 else numpy.sin(m_abs*phiv)
+        sinmcos = numpy.sin(m_abs*phiv) if mi >= 0 else -numpy.cos(m_abs*phiv)
+
+        leg = lpmv(m_abs, ni, numpy.cos(thetav))*sch
+        dleg = scha.dlpmv(m_abs, ni, numpy.cos(thetav))*(-numpy.sin(thetav))*sch
+    
+        x += g*cossin*dleg*(a_r/rv)**(ni+2)
+        y += g*sinmcos*m_abs*leg/numpy.sin(thetav)*(a_r/rv)**(ni+2)
+        z -= (ni+1)*(g*cossin)*leg*(a_r/rv)**(ni+2)
+
+    for ki, mi, ni, g, sch in zip(k_ext, m_ext, n_ext, gcoefs_ext, schmidt_ext):
+    
+        m_abs = abs(mi)
+    
+        cossin = numpy.cos(m_abs*phiv) if mi >= 0 else numpy.sin(m_abs*phiv)
+        sinmcos = numpy.sin(m_abs*phiv) if mi >= 0 else -numpy.cos(m_abs*phiv)
+
+        leg = lpmv(m_abs, ni, numpy.cos(thetav))*sch
+        dleg = scha.dlpmv(m_abs, ni, numpy.cos(thetav))*(-numpy.sin(thetav))*sch
+    
+        x += g*cossin*dleg*(rv/a_r)**(ni-1)
+        y += g*sinmcos*m_abs*leg/numpy.sin(thetav)*(rv/a_r)**(ni-1)
+        z += ni*(g*cossin)*leg*(rv/a_r)**(ni-1)
+
+    return x, y, z
+
+def mehler_field(m_mehler, gcoefs, rv, thetav, phiv, theta_0):
+
+    x = numpy.zeros_like(thetav)
+    y = x.copy()
+    z = y.copy()
+    
+    for mm, g in zip(m_mehler, gcoefs):
+
+        mm_abs = numpy.abs(mm)
+        
+        cossin = cos(mm_abs*phiv) if mm >= 0 else sin(mm_abs*phiv)
+        sinmcos = sin(mm_abs*phiv) if mm >= 0 else -cos(mm_abs*phiv)
+
+        mehler_dp = mehler.dmehler_t(mm_abs, 0, thetav, theta_0, normalized=True, mfactor=True)
+        mehler_p = mehler.mehler_t(mm_abs, 0, thetav, theta_0, normalized=True, mfactor=True)
+
+        x += r_mehler(rv)*g*mehler_dp * cossin
+        y += r_mehler(rv)*g*mm_abs/sin(thetav)*mehler_p*sinmcos
+        z += dr_mehler(rv)*g*mehler_p*cossin
+
+    return x, y, z
+    
+def synth_field(kmn_legendre, m_mehler, gp, rv, thetav, phiv, theta_0):
 
     #legendre
     gp_legendre = gp[:len(kmn_legendre[0])]
@@ -233,12 +398,17 @@ def synth_field(kmn_legendre, m_mehler, gp, thetav, phiv, theta_0):
         cossin = cos(mm_abs*phiv) if mm >= 0 else sin(mm_abs*phiv)
         sinmcos = sin(mm_abs*phiv) if mm >= 0 else -cos(mm_abs*phiv)
 
-        #mehler_dp = mehler.dmehler_t(mm_abs, 0, thetav, theta_0, normalized=False) #MAGIC
         mehler_dp = mehler.dmehler_t(mm_abs, 0, thetav, theta_0, normalized=True, mfactor=True)
         mehler_p = mehler.mehler_t(mm_abs, 0, thetav, theta_0, normalized=True, mfactor=True)
 
-        x += g*mehler_dp * cossin
-        y += g*mm_abs/sin(thetav)*mehler_p*sinmcos
-        #z -= 0.5*g*mehler_p*cossin #magia chunga
+        x += r_mehler(rv)*g*mehler_dp * cossin
+        y += r_mehler(rv)*g*mm_abs/sin(thetav)*mehler_p*sinmcos
+        z += dr_mehler(rv)*g*mehler_p*cossin #magia chunga
 
     return x, y, z
+
+def r_mehler(r):
+    return numpy.sqrt(a_r/r)*(numpy.log(r/a_r)+2)
+
+def dr_mehler(r):
+    return -1/(2*r)*numpy.sqrt(a_r/r)*numpy.log(r/a_r)

@@ -29,23 +29,29 @@ def hypergeom(m, p, s, theta, iter_max=100):
 
     return hyp
 
-def mehler_t(m, tau, theta, theta_0=numpy.pi, normalized=False):
+def mehler_t(m, tau, theta, theta_0=numpy.pi, normalized=False, mfactor = False):
     """ mehler functions as calculated by thebault the great french man """
     theta = numpy.rad2deg(theta)
     theta_0 = numpy.rad2deg(theta_0)
     norm = int(normalized)
     uf = numpy.frompyfunc(lambda x:mfunnorm.mfunnorm(m,tau,x,theta_0, norm)[0], 1, 1)
-    
-    return numpy.float64(uf(theta))
 
-def dmehler_t(m, tau, theta, theta_0=numpy.pi, normalized=False):
+    if mfactor:
+        return (-1)**m*numpy.float64(uf(theta))
+    else:
+        return numpy.float64(uf(theta))
+
+def dmehler_t(m, tau, theta, theta_0=numpy.pi, normalized=False, mfactor = False):
     """ mehler functions derivative as calculated by thebault the great french man """
     theta = numpy.rad2deg(theta)
     theta_0 = numpy.rad2deg(theta_0)
     norm = int(normalized)
     uf = numpy.frompyfunc(lambda x:mfunnorm.mfunnorm(m,tau,x,theta_0, norm)[1], 1, 1)
-    
-    return numpy.float64(uf(theta))
+
+    if mfactor:
+        return (-1)**m*numpy.float64(uf(theta))
+    else:
+        return numpy.float64(uf(theta))
 
 def dmehler_t_numeric(m, tau, theta, theta_0=numpy.pi, delta=1e-8, normalized=False):
 

@@ -179,9 +179,8 @@ def rotate_dif(r, theta, phi, dec, theta_c, phi_c, towards_pole=True):
     r, theta_r, phi_r = rotate_coords(r, theta, phi, rot_mat)
     dec_r = rotate_declination(dec, theta_c, phi_c, theta, phi, theta_r, invert=towards_pole)
     return r, theta_r, phi_r, dec_r
-    
 
-def xyzfield(k, m, n, gcoefs, thetav, phiv):    
+def xyzfield(k, m, n, gcoefs, thetav, phiv):
     lpmv = scipy.special.lpmv
 
 
@@ -191,7 +190,7 @@ def xyzfield(k, m, n, gcoefs, thetav, phiv):
 
     m_abs = numpy.abs(m)
     
-    schmidt = schmidt_real(m_abs, n, grid=False)
+    schmidt = numpy.atleast_1d(schmidt_real(m_abs, n, grid=False))
 
     for ki, mi, ni, g, sch in zip(k, m, n, gcoefs, schmidt):
     
@@ -202,11 +201,7 @@ def xyzfield(k, m, n, gcoefs, thetav, phiv):
 
         leg = lpmv(m_abs, ni, numpy.cos(thetav))*sch
         dleg = dlpmv(m_abs, ni, numpy.cos(thetav))*(-numpy.sin(thetav))*sch
-    
-        #x += g*cossin*sch*dlpmv(m_abs, ni, numpy.cos(thetav))*(-numpy.sin(thetav))
-        #y += g*sinmcos*m_abs*sch*lpmv(m_abs, ni, numpy.cos(thetav))/numpy.sin(thetav)
-        #z -= (ki+1)*(g*cossin)*sch*lpmv(m_abs, ni, numpy.cos(thetav))
-
+        
         x += g*cossin*dleg
         y += g*sinmcos*m_abs*leg/numpy.sin(thetav)
         z -= (ni+1)*(g*cossin)*leg
@@ -236,7 +231,7 @@ def polar_contour(scalar, thetav, phiv, theta0, ax, resolution=200, base=None):
 
     return base.contourf(lon, lat, xx, 40, latlon=True, ax=ax, cmap="bwr")
 
-def polar_tricontour(scalar, thetav, phiv, theta0, ax, base=None, cmap="bwr", scale="symmetric"):
+def polar_tricontour(scalar, thetav, phiv, theta0, ax, base=None, cmap="bwr", scale="symmetric", lines=False):
     
     lat0 = numpy.rad2deg(theta0)
     from mpl_toolkits.basemap import Basemap
@@ -261,15 +256,21 @@ def polar_tricontour(scalar, thetav, phiv, theta0, ax, base=None, cmap="bwr", sc
     else:
         vmin=-numpy.max(abs(scalar))*1.1; vmax=numpy.max(abs(scalar))*1.1
 
-    return ax.tricontourf(x_coord, y_coord, scalar, 60, cmap=cmap,
-                          vmin=vmin, vmax=vmax)
+    trifill=ax.tricontourf(x_coord, y_coord, scalar, 60, cmap=cmap,
+                           vmin=vmin, vmax=vmax)
+
+    if lines:
+        ax.tricontour(x_coord, y_coord, scalar, 10, colors="white",
+                           vmin=vmin, vmax=vmax)
+
+    return trifill
 
 def condition_matrix_xyz(thetav, phiv, degrees):
 
     k, m, n = numpy.array(degrees)
     m_abs = numpy.abs(m)
     cos = numpy.cos; sin = numpy.sin; lpmv = scipy.special.lpmv
-    schmidt = schmidt_real(m_abs, n, grid=False)
+    schmidt = numpy.atleast_1d(schmidt_real(m_abs, n, grid=False))
 
     cossin = numpy.zeros((len(thetav), len(k)))
     cossin[:, m >= 0] = cos(phiv[:, numpy.newaxis] @ numpy.abs(m[numpy.newaxis, :]))[:, m >= 0]
@@ -287,8 +288,6 @@ def condition_matrix_xyz(thetav, phiv, degrees):
 
     for i, (mi_abs, ni, sch) in enumerate(zip(m_abs,n,schmidt)):
         leg[:, i] = lpmv(mi_abs, ni, costhetav[:,0])*sch
-        #dleg[:, i] = dlpmv(mi, ni, costhetav[:,0])*sch
-        #dleg[:, i]  = numpy.gradient(leg[:,i])*len(thetav)/numpy.max(thetav)
         dleg[:, i] = dlpmv(mi_abs, ni, costhetav[:,0])*sch*(-sinthetav[:,0])
         
     Ax = cossin * dleg
@@ -371,10 +370,10 @@ def invert_dif(thetav, phiv, D, I, F, degrees, g0=None, steps=5):
         delta = numpy.concatenate((di_delta, f_delta), axis=0)
 
         #hmmmmm
-        g = g - (numpy.linalg.pinv(Adif.T @ Adif) @ Adif.T) @ delta
+        #g = g - (numpy.linalg.pinv(Adif.T @ Adif) @ Adif.T) @ delta
 
-        #solution = numpy.linalg.lstsq(Adif, delta)
-        #g = g - solution[0]
+        solution = numpy.linalg.lstsq(Adif, delta)
+        g = g - solution[0]
         sys.stdout.write("\r")
         sys.stdout.write(str(numpy.sqrt(sum(delta**2))))
         
