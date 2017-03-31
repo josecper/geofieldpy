@@ -231,7 +231,7 @@ def polar_contour(scalar, thetav, phiv, theta0, ax, resolution=200, base=None):
 
     return base.contourf(lon, lat, xx, 40, latlon=True, ax=ax, cmap="bwr")
 
-def polar_tricontour(scalar, thetav, phiv, theta0, ax, base=None, cmap="bwr", scale="symmetric", lines=False):
+def polar_tricontour(scalar, thetav, phiv, theta0, ax, base=None, cmap="bwr", scale="symmetric", lines=False, lims=None):
     
     lat0 = numpy.rad2deg(theta0)
     from mpl_toolkits.basemap import Basemap
@@ -253,6 +253,8 @@ def polar_tricontour(scalar, thetav, phiv, theta0, ax, base=None, cmap="bwr", sc
     elif(scale == "positive"):
         vrange = numpy.max(scalar)-numpy.min(scalar)
         vmax = numpy.max(scalar); vmin = vmax-vrange*2
+    elif(scale =="custom"):
+        vmin, vmax = lims
     else:
         vmin=-numpy.max(abs(scalar))*1.1; vmax=numpy.max(abs(scalar))*1.1
 
@@ -543,7 +545,7 @@ def spatial_reg(k, m, n, theta_0, magical=True):
     #squared normalization
     square_sch = schmidt_real(m0, n0, grid=False)*schmidt_real(m0, n1, grid=False)
     
-    #legendre poly * derivative (* chain rule)
+    #legendre y * derivative (* chain rule)
     pdp = lpmv(m0, n0, cos(theta_0))*dlpmv(m0, n1, cos(theta_0))*square_sch*(-sin(theta_0))
     pdndp = lpmv(m0, n0, cos(theta_0))*dndlpmv(m0, n1, cos(theta_0))*square_sch*(-sin(theta_0))
     dpdnp = dlpmv(m0, n1, cos(theta_0))*dnlpmv(m0, n0, cos(theta_0))*square_sch*(-sin(theta_0))

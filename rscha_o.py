@@ -44,13 +44,13 @@ class Model:
         
         # har har har cap
         in_cap = trig.angulardist(thetav, phiv, self.theta_c, self.phi_c) < self.theta_0
-        return thetav[in_cap], phiv[in_cap]
+        return in_cap
 
     def add_data(self, t, thetav, phiv, D, I, F, crop = True, to_spherical = True):
 
         # crop the it
         if crop:
-            thetav, phiv = self.crop_cap(thetav, phiv)
+            in_cap = self.crop_cap(thetav, phiv)
 
         # convertir a esféricas
         if to_spherical:
