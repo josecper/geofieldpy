@@ -153,12 +153,14 @@ def norm_leg_even(k, m, n, theta_0):
     return (-sin(theta_0))**2*lpmv(m_abs, n, cos(theta_0))*scha.dndlpmv(m_abs, n, cos(theta_0))*schmidt**2\
         /(2*n+1)
 
-def rscha_spatial_reg_diag(kmn_legendre, m_mehler, theta_0):
+def rscha_spatial_reg_diag(kmn_in, kmn_ext, m_mehler, theta_0):
     """
     Legendre/Mehler functions spatial regularization matrix (diagonal?? hmm), 
     based on the <B²> norm.
     """
-    k_even, m_even, n_even = kmn_legendre
+    k_even = numpy.concatenate((kmn_in[0], kmn_ext[0]))
+    m_even = numpy.concatenate((kmn_in[1], kmn_ext[1]))
+    n_even = numpy.concatenate((kmn_in[2], kmn_ext[2]))
     
     n_leg = len(k_even)
     n_mehler = len(m_mehler)

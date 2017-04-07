@@ -8,11 +8,14 @@ import geofield
 import trig
 import constants
 import bspline
+import ops
+
 
 class Model:
     """
     clase que reprensenta un modelo rscha-2d guay
-    todos los ángulos están en radianes
+    todos los ángulos están en radianes pero el archivo está
+    en grados ¯\_(ツ)_/¯
     """
 
     def __init__(self):
@@ -21,7 +24,8 @@ class Model:
     # paso 1: los parametros
     def set_model_params(self, theta_c, phi_c, theta_0d, cap_edge=0.1,
                          kmax_int=3, kmax_ext=3, m_max=2, g10_ref=-30,
-                         knots=numpy.arange(-1000, 2050, 50)):
+                         knots=numpy.arange(-1000, 2050, 50),
+                         spatial_reg=0.0, temporal_reg=0.0):
         self.theta_c = theta_c
         self.phi_c = phi_c
         self.theta_0d = theta_0d
@@ -31,6 +35,8 @@ class Model:
         self.m_max = m_max
         self.g10_ref = g10_ref
         self.knots = knots
+        self.spatial_reg = spatial_reg
+        self.temporal_reg = temporal_reg
 
         # ya se puede calcular el grado
         self.calculate_degrees()
@@ -57,7 +63,7 @@ class Model:
             m_mehler.extend([mm, -mm])
         self.m_mehler = numpy.array(m_mehler)
 
-    # paso 2: la dataaaaaaa
+    # paso 2: la data
     def add_data(self, fname):
         """
         formato: ref, ref, t, t_err, lat(º), lon(º),
@@ -80,7 +86,14 @@ class Model:
         self.tv = datos_t[2][in_cap]
         self.D_o = numpy.deg2rad(datos_t[6][in_cap])
         self.I_o = numpy.deg2rad(datos_t[7][in_cap])
+        self.a95 = numpy.deg2rad(datos_t[8][in_cap])
+
+        # normalized form???
+        self.D_o = trig.mindiff(self.D_o, 0)
+        self.I_o = trig.mindiff(self.I_o, 0)
+        
         self.F_o = datos_t[9][in_cap]
+        self.F_err = datos_t[10][in_cap]
 
         # encontrar nans
         self.nan_D = numpy.isnan(self.D_o)
@@ -126,7 +139,15 @@ class Model:
         data = numpy.concatenate((self.D_res, self.I_res, self.F_res_norm))[~self.nan_DIF]
         self.data_last_solved = data
 
-        gptlsr = numpy.linalg.lstsq(Adift, data)[0]
+        if (self.temporal_reg == 0.0) and (self.spatial_reg == 0.0):
+            gptlsr = numpy.linalg.lstsq(Adift, data)[0]
+        else:
+            M_reg = self.regularization_matrix()
+            # how_big = ops.rms(Adift.T @ Adift), ops.rms(M_reg)
+            # print(f"let's HECK: {how_big}")
+            gptlsr = numpy.linalg.lstsq(Adift.T @ Adift + M_reg,
+                                        Adift.T @ data)[0]
+            
         self.g_last_solved = gptlsr
 
         return gptlsr
@@ -231,3 +252,33 @@ class Model:
                                    for i in range(len(self.knots))], axis=1)
 
         return Adift
+
+    # welcome to spaghetti hell
+    def regularization_matrix(self):
+        rt = self.temporal_reg
+        rs = self.spatial_reg
+
+        # dummy to see if it works:
+
+        n_knots = len(self.knots)
+        d2 = numpy.diff(numpy.eye(n_knots), 2, axis=0)
+        n_degrees = (len(self.k_int)
+                     + len(self.k_ext)
+                     + len(self.m_mehler))
+
+        d2 = numpy.repeat(
+            numpy.repeat(d2, n_degrees, axis=0),
+            n_degrees, axis=1)
+
+        ds = rscha_r.rscha_spatial_reg_diag((self.k_int, self.m_int, self.n_int),
+                                            (self.k_ext, self.m_ext, self.n_ext),
+                                            self.m_mehler, self.theta_0p)
+
+        ds = numpy.tile(ds, (n_knots, n_knots))
+        # multiply by the heck damn spline
+        spline_vals = self.temporal_matrix(self.knots)
+        ds = ds * numpy.repeat(numpy.repeat(spline_vals, n_degrees, axis=0),
+                               n_degrees, axis=1)
+
+        #multiply the heck damn spline by this in turn
+        return rt * (d2.T @ d2)*ds + rs*ds
