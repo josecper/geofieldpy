@@ -63,6 +63,9 @@ class Model:
             m_mehler.extend([mm, -mm])
         self.m_mehler = numpy.array(m_mehler)
 
+    def normalize(self):
+        pass
+        
     # paso 2: la data
     def add_data(self, fname):
         """
@@ -80,10 +83,17 @@ class Model:
         in_cap = trig.angulardist(thetav, phiv,
                                   self.theta_c, self.phi_c) < self.theta_0d
 
+        self.ids = numpy.arange(len(thetav))[in_cap]
+        self.in_cap = in_cap
+
+        self.lat = datos_t[4][in_cap]
+        self.lon = datos_t[5][in_cap]
+
         self.thetav = thetav[in_cap]
         self.phiv = phiv[in_cap]
 
         self.tv = datos_t[2][in_cap]
+        self.t_err = datos_t[3][in_cap]
         self.D_o = numpy.deg2rad(datos_t[6][in_cap])
         self.I_o = numpy.deg2rad(datos_t[7][in_cap])
         self.a95 = numpy.deg2rad(datos_t[8][in_cap])
@@ -102,6 +112,10 @@ class Model:
         self.nan_DIF = numpy.concatenate((self.nan_D,
                                           self.nan_I,
                                           self.nan_F))
+
+        self.refresh_data()
+
+    def refresh_data(self):
         
         # convertir a esferas esféricas
         self.r_geo, self.theta_geo, self.phi_geo = trig.geo2sph(self.thetav,
@@ -130,6 +144,51 @@ class Model:
 
         # calcular los residuolos
         self.calculate_residuals()
+
+    def find_outliers(self, g=None):
+
+        if g is None:
+            g = self.g_last_solved
+
+        sigma_65_D = 81/140*self.a95/numpy.cos(self.I_o)
+        sigma_65_I = 81/140*self.a95
+        sigma_65_F = self.F_err.copy()
+
+        D_rem_bd, I_rem_bd, F_rem_bd = self.synth_data(self.tv, self.r_geo,
+                                                       self.theta_geo,
+                                                       self.phi_geo, g)
+
+        out_D = numpy.abs(trig.mindiff(D_rem_bd, self.D_o)) > 3*sigma_65_D
+        out_I = numpy.abs(trig.mindiff(I_rem_bd, self.I_o)) > 3*sigma_65_I
+        out_F = numpy.abs((F_rem_bd - self.F_o)) > 3*sigma_65_F
+
+        return out_D, out_I, out_F
+
+    def wiggle(self):
+
+        sigma_65_D = 81/140*self.a95/numpy.cos(self.I_o)
+        sigma_65_I = 81/140*self.a95
+        sigma_65_F = self.F_err.copy()
+        t_err = self.t_err.copy()
+
+        sigma_65_D[numpy.isnan(sigma_65_D) |
+                   (self.a95 < constants.min_a95)] = 81/140*constants.min_a95
+        sigma_65_I[numpy.isnan(sigma_65_I) |
+                   (self.a95 < constants.min_a95)] = 81/140*constants.min_a95
+
+        sigma_65_F[numpy.isnan(sigma_65_F) |
+                   (sigma_65_F < constants.min_Ferr)] = constants.min_Ferr
+
+        t_err[t_err < 1] = 1
+        
+        self.D_o = self.D_o + sigma_65_D*numpy.random.randn(*self.D_o.shape)
+        self.I_o = self.I_o + sigma_65_I*numpy.random.randn(*self.I_o.shape)
+        self.F_o = self.F_o + sigma_65_F*numpy.random.randn(*self.F_o.shape)
+
+        self.D_o = trig.mindiff(self.D_o, 0)
+        self.I_o = trig.mindiff(self.I_o, 0)
+
+        self.tv = self.tv + (numpy.random.random(*self.tv.shape) - 0.5)*(2*self.t_err)
 
     def solve(self):
 
@@ -171,7 +230,7 @@ class Model:
 
         D_m = D_dip + Ds
         I_m = I_dip + Is
-        F_m = F_dip + Fs*self.F_dip_avg
+        F_m = F_dip + Fs*self.F_dip_avg/constants.evil
 
         return D_m, I_m, F_m
         
@@ -216,7 +275,7 @@ class Model:
         self.D_res = trig.mindiff(self.D_o, self.D_dip)
         self.I_res = trig.mindiff(self.I_o, self.I_dip)
         self.F_res = self.F_o - self.F_dip
-        self.F_res_norm = self.F_res/self.F_dip_avg
+        self.F_res_norm = self.F_res/self.F_dip_avg*constants.evil
 
     def temporal_matrix(self, tv):
         return bspline.condition_array(self.knots, tv)
@@ -281,4 +340,5 @@ class Model:
                                n_degrees, axis=1)
 
         #multiply the heck damn spline by this in turn
+        #return rt * (d2.T @ d2)*ds + rs*ds <- WARNING THIS IS THE GOOD? THING
         return rt * (d2.T @ d2)*ds + rs*ds

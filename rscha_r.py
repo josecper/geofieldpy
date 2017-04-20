@@ -155,7 +155,7 @@ def norm_leg_even(k, m, n, theta_0):
 
 def rscha_spatial_reg_diag(kmn_in, kmn_ext, m_mehler, theta_0):
     """
-    Legendre/Mehler functions spatial regularization matrix (diagonal?? hmm), 
+    Legendre/Mehler functions spatial regularization matrix (diagonal?? hmm),
     based on the <B²> norm.
     """
     k_even = numpy.concatenate((kmn_in[0], kmn_ext[0]))
