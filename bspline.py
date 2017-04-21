@@ -99,8 +99,11 @@ def deboor_base(k,t,d):
         y = dif_i*deboor_base(k,t,d-1) + dif_im1*deboor_base(k_p1,t,d-1)
 
         #quick
-        y[-1,:-1-d] = y[0, -(d+2)::-1]
-    
+        #y[-1,:-1-d] = y[0, -(d+2)::-1]
+
+    y[t>=k[-1], -2] = 1
+    #y = y[:-1]
+        
     return y
 
 def bootstrap_fit(times, data, time_error, data_error, times_out, n_knots=66, knot_points=None, l=260, iterations=1000, return_all=False, method="ensemble"):

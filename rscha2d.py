@@ -34,7 +34,8 @@ class Model:
         self.kmax_ext = kmax_ext
         self.m_max = m_max
         self.g10_ref = g10_ref
-        self.knots = knots
+        self.knots_ok = numpy.concatenate((3*[knots[0]], knots))
+        self.knots = numpy.concatenate((3*[knots[0]], knots))[:-1]
         self.spatial_reg = spatial_reg
         self.temporal_reg = temporal_reg
 
@@ -190,11 +191,15 @@ class Model:
 
         self.tv = self.tv + (numpy.random.random(*self.tv.shape) - 0.5)*(2*self.t_err)
 
+    def change_indices(Adift):
+        pass
+
     def solve(self):
 
-        Adift = self.model_matrix(self.tv, self.r_geo, self.theta_r, self.phi_r)[~self.nan_DIF]
+        Adift = self.model_matrix(self.tv, self.r_geo, self.theta_r, self.phi_r,
+                                  reverse_order=True)[~self.nan_DIF] # CUIDAO!!!!!!!!!!!!!!!!!!!!!!!
         self.Adift_last_solved = Adift
-        
+
         data = numpy.concatenate((self.D_res, self.I_res, self.F_res_norm))[~self.nan_DIF]
         self.data_last_solved = data
 
@@ -206,7 +211,12 @@ class Model:
             # print(f"let's HECK: {how_big}")
             gptlsr = numpy.linalg.lstsq(Adift.T @ Adift + M_reg,
                                         Adift.T @ data)[0]
-            
+
+
+        #CUIDAO
+        print(gptlsr)
+        gptlsr = numpy.concatenate(gptlsr.reshape(24,85).T)
+        
         self.g_last_solved = gptlsr
 
         return gptlsr
@@ -230,7 +240,7 @@ class Model:
 
         D_m = D_dip + Ds
         I_m = I_dip + Is
-        F_m = F_dip + Fs*self.F_dip_avg/constants.evil
+        F_m = F_dip + Fs*F_dip
 
         return D_m, I_m, F_m
         
@@ -275,10 +285,13 @@ class Model:
         self.D_res = trig.mindiff(self.D_o, self.D_dip)
         self.I_res = trig.mindiff(self.I_o, self.I_dip)
         self.F_res = self.F_o - self.F_dip
-        self.F_res_norm = self.F_res/self.F_dip_avg*constants.evil
+        self.F_res_norm = self.F_res/self.F_dip
 
     def temporal_matrix(self, tv):
-        return bspline.condition_array(self.knots, tv)
+
+        A = bspline.deboor_base(self.knots_ok, tv, 3)[:, :-1]
+        #numpy.savetxt("spline.txt", A)
+        return A
 
     def spatial_matrix(self, rv, thetav, phiv, Bx=None, By=None, Bz=None):
 
@@ -297,18 +310,22 @@ class Model:
                                                self.m_mehler,
                                                rv, thetav, phiv,
                                                self.theta_0p,
-                                               Bx, By, Bz)
+                                               Bx, By, Bz, self.F_dip_avg)
             )
 
         return Adif_rscha
 
-    def model_matrix(self, tv, rv, thetav, phiv, Bx=None, By=None, Bz=None):
+    def model_matrix(self, tv, rv, thetav, phiv, Bx=None, By=None, Bz=None, reverse_order=False):
         Adif_rscha_test = self.spatial_matrix(rv, thetav, phiv, Bx, By, Bz)
         At = self.temporal_matrix(tv)
         At3 = numpy.vstack((At, At, At))
 
-        Adift = numpy.concatenate([Adif_rscha_test*At3[:, i:i+1]
-                                   for i in range(len(self.knots))], axis=1)
+        if reverse_order:
+            Adift = numpy.concatenate([Adif_rscha_test[:, i:i+1]*At3 for i in
+                                       range(Adif_rscha_test.shape[1])], axis=1)
+        else:
+            Adift = numpy.concatenate([Adif_rscha_test*At3[:, i:i+1]
+                                       for i in range(len(self.knots))], axis=1)
 
         return Adift
 
@@ -326,19 +343,88 @@ class Model:
                      + len(self.m_mehler))
 
         d2 = numpy.repeat(
-            numpy.repeat(d2, n_degrees, axis=0),
-            n_degrees, axis=1)
+             numpy.repeat(d2.T @ d2, n_degrees, axis=0),
+             n_degrees, axis=1)
 
-        ds = rscha_r.rscha_spatial_reg_diag((self.k_int, self.m_int, self.n_int),
-                                            (self.k_ext, self.m_ext, self.n_ext),
-                                            self.m_mehler, self.theta_0p)
+        #ds = rscha_r.rscha_spatial_reg_diag((self.k_int, self.m_int, self.n_int),
+        #                                    (self.k_ext, self.m_ext, self.n_ext),
+        #                                    self.m_mehler, self.theta_0p)
 
-        ds = numpy.tile(ds, (n_knots, n_knots))
-        # multiply by the heck damn spline
-        spline_vals = self.temporal_matrix(self.knots)
-        ds = ds * numpy.repeat(numpy.repeat(spline_vals, n_degrees, axis=0),
-                               n_degrees, axis=1)
+        # ds = numpy.diag(numpy.tile(self.reg_br2(), len(self.knots))) (antes)
+        ds = numpy.diag(numpy.repeat(self.reg_br2(), len(self.knots))) # CUIDAO
 
-        #multiply the heck damn spline by this in turn
-        #return rt * (d2.T @ d2)*ds + rs*ds <- WARNING THIS IS THE GOOD? THING
-        return rt * (d2.T @ d2)*ds + rs*ds
+        dtds = (numpy.tile(self.reg_dt2_2(), (n_degrees, n_degrees)) *
+                numpy.repeat(
+                    numpy.repeat(
+                        numpy.diag(self.reg_br2()),
+                        len(self.knots), axis=0), len(self.knots), axis=1))
+        
+        #numpy.savetxt("Mf.txt", dsl * ds)
+        #numpy.savetxt("dt2.txt", dtds)
+        return rt * (dtds) + rs * ds
+        #return rt * (ds * d2) + rs * ds
+
+    def reg_dt2(self):
+
+        n_knots = len(self.knots)
+        n_degrees = (len(self.k_int)
+                     + len(self.k_ext)
+                     + len(self.m_mehler))
+
+        ds = numpy.diff(numpy.eye(n_knots), 2, axis=0)
+        ds = ds.T @ ds
+
+        dsl = [numpy.tile(row_ds, (n_degrees, n_degrees)) for row_ds in ds]
+        dsl = numpy.vstack(dsl)
+
+        #numpy.savetxt("dsl.txt", dsl)
+        return dsl
+
+    def reg_dt2_2(self):
+
+        n_knots = len(self.knots)
+        n_degrees = (len(self.k_int)
+                     + len(self.k_ext)
+                     + len(self.m_mehler))
+
+        ds = numpy.diff(numpy.eye(n_knots), 2, axis=0)
+        ds = ds.T @ ds
+        
+        return ds
+
+    def reg_br2(self):
+
+        cos = numpy.cos
+        sin = numpy.sin
+
+        reg_leg_in = numpy.zeros_like(self.k_int)
+
+        for i, (k, m, n) in enumerate(zip(self.k_int, self.m_int, self.n_int)):
+            m_abs = abs(m)
+            a = 1/(1-cos(self.theta_0p)) if m == 0 else 1/(2-2*cos(self.theta_0p))
+            A = -(n+1)**2 * (n+2)**2 / (2*n+1)
+            B = a*sin(self.theta_0p)
+            C = scha.lpmv(m_abs, n, cos(self.theta_0p))*scha.schmidt_real(m_abs, n)
+            D = scha.dndlpmv(m_abs, n, cos(self.theta_0p))*(-sin(self.theta_0p))*scha.schmidt_real(m_abs, n)
+            E = 1.
+
+            reg_leg_in[i] = A*B*C*D*E
+
+        reg_leg_ext = numpy.zeros_like(self.k_ext)
+
+        for i, (k, m, n) in enumerate(zip(self.k_ext, self.m_ext, self.n_ext)):
+            m_abs = abs(m)
+            a = 1/(1-cos(self.theta_0p)) if m == 0 else 1/(2-2*cos(self.theta_0p))
+            A = -n**2 * (n-1)**2 / (2*n+1)
+            B = a*sin(self.theta_0p)
+            C = scha.lpmv(m_abs, n, cos(self.theta_0p))*scha.schmidt_real(m_abs, n)
+            D = scha.dndlpmv(m_abs, n, cos(self.theta_0p))*(-sin(self.theta_0p))*scha.schmidt_real(m_abs, n)
+            E = 1.
+
+            reg_leg_ext[i] = A*B*C*D*E
+
+        reg_meh = numpy.zeros_like(self.m_mehler, dtype="float")
+        reg_meh[0] = 1./(1-cos(self.theta_0p))
+        reg_meh[1:] = 1./(2-2*cos(self.theta_0p))
+
+        return numpy.concatenate((reg_leg_in, reg_leg_ext, 5*reg_meh))

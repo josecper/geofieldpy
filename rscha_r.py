@@ -12,7 +12,8 @@ a_r = 6371.2
 a_ellip = 6378.137
 b_ellip = 6356.752
 
-def rscha_condition_matrix_dif(kmn_leg_in, kmn_leg_ex, m_mehler, rv, thetav, phiv, theta_0, Bx_ref, By_ref, Bz_ref, normalize=True):
+def rscha_condition_matrix_dif(kmn_leg_in, kmn_leg_ex, m_mehler, rv, thetav, phiv, theta_0, Bx_ref, By_ref, Bz_ref,
+                               F_avg, normalize=True):
 
     k_in, m_in, n_in = kmn_leg_in
     k_ex, m_ex, n_ex = kmn_leg_ex
@@ -52,25 +53,36 @@ def rscha_condition_matrix_dif(kmn_leg_in, kmn_leg_ex, m_mehler, rv, thetav, phi
     Az = numpy.concatenate((Az_leg_in, Az_leg_ex, Az_meh), axis=1)
     #Axyz = numpy.concatenate((Ax, Ay, Az), axis=0)
 
+    numpy.savetxt("Axyz.txt", numpy.concatenate((Ax, Ay, Az)))
+
     del Ax_meh, Ay_meh, Az_meh, Ax_leg_ex, Ay_leg_ex, Az_leg_ex, Ax_leg_in, Ay_leg_in, Az_leg_in
 
     # ahora a hacer el dif
     # normalizar el campo
-    F_ref_n = numpy.sqrt(Bx_ref**2 + By_ref**2 + Bz_ref**2)
+    F_ref = numpy.sqrt(Bx_ref**2 + By_ref**2 + Bz_ref**2)
 
-    if normalize:
-        F_avg = numpy.average(F_ref_n)
-    else:
-        F_avg = 1
+    #if normalize:
+    #    F_avg = numpy.average(F_ref_n)
+    #else:
+    #    F_avg = 1
         
-    F_ref_n = F_ref_n / F_avg
+    F_ref_n = F_ref / F_avg
     Bx_ref_n = Bx_ref / F_avg
     By_ref_n = By_ref / F_avg
     Bz_ref_n = Bz_ref / F_avg
     H_ref_n = numpy.sqrt(Bx_ref_n**2+By_ref_n**2)
 
-    Adif = scha.condition_matrix_dif(Bx_ref_n, By_ref_n, Bz_ref_n, F_ref_n, H_ref_n, Ax, Ay, Az)
-    return Adif
+    Ad, Ai = scha.condition_matrix_dif(Bx_ref, By_ref, Bz_ref, F_ref,
+                                       numpy.sqrt(Bx_ref**2+By_ref**2),
+                                       Ax, Ay, Az)[:-1]
+
+    #Af = scha.condition_matrix_dif(Bx_ref_n, By_ref_n, Bz_ref_n, F_ref_n, H_ref_n, Ax, Ay, Az)[-1]
+    Af = (Bx_ref[:, numpy.newaxis] * Ax
+          + By_ref[:, numpy.newaxis] * Ay
+          + Bz_ref[:, numpy.newaxis] * Az)/F_ref[:, numpy.newaxis]**2
+
+    # Adif = scha.condition_matrix_dif(Bx_ref_n, By_ref_n, Bz_ref_n, F_ref_n, H_ref_n, Ax, Ay, Az)
+    return (Ad, Ai, Af)
     
 
 def mehler_condition_matrix_xyz(rv, thetav, phiv, m, theta_0):
@@ -375,8 +387,8 @@ def mehler_field(m_mehler, gcoefs, rv, thetav, phiv, theta_0):
         cossin = cos(mm_abs*phiv) if mm >= 0 else sin(mm_abs*phiv)
         sinmcos = sin(mm_abs*phiv) if mm >= 0 else -cos(mm_abs*phiv)
 
-        mehler_dp = mehler.dmehler_t(mm_abs, 0, thetav, theta_0, normalized=True, mfactor=True)
-        mehler_p = mehler.mehler_t(mm_abs, 0, thetav, theta_0, normalized=True, mfactor=True)
+        mehler_dp = mehler.dmehler_t(mm_abs, 0, thetav, theta_0, normalized=True, mfactor=False)
+        mehler_p = mehler.mehler_t(mm_abs, 0, thetav, theta_0, normalized=True, mfactor=False)
 
         x += r_mehler(rv)*g*mehler_dp * cossin
         y += r_mehler(rv)*g*mm_abs/sin(thetav)*mehler_p*sinmcos
