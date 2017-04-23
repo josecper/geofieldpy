@@ -10,6 +10,11 @@ import constants
 import bspline
 import ops
 
+import joblib
+import tempfile
+
+memory = joblib.Memory(cachedir=tempfile.mkdtemp())
+
 
 class Model:
     """
@@ -19,6 +24,7 @@ class Model:
     """
 
     def __init__(self):
+        self.model_matrix = memory.cache(self.model_matrix)
         pass
 
     # paso 1: los parametros
@@ -71,9 +77,11 @@ class Model:
     def add_data(self, fname):
         """
         formato: ref, ref, t, t_err, lat(º), lon(º),
-        D(º), I(º), a95(º), F(uT), F_err(uT), misterioso
+        D(º), I(º), a95(º), F(uT), F_err(uT), arq_vol
         """
         datos_t = numpy.loadtxt(fname).T
+        self.volcanic = (datos_t[0] == 888)
+        print(self.volcanic.sum())
         # convención ancestral
         datos_t[datos_t == 999] = numpy.nan
 
@@ -86,6 +94,7 @@ class Model:
 
         self.ids = numpy.arange(len(thetav))[in_cap]
         self.in_cap = in_cap
+        self.volcanic = self.volcanic[in_cap]
 
         self.lat = datos_t[4][in_cap]
         self.lon = datos_t[5][in_cap]
@@ -194,7 +203,12 @@ class Model:
     def change_indices(Adift):
         pass
 
-    def solve(self):
+    def solve(self, complete=False):
+
+        n_knots = len(self.knots)
+        n_degrees = (len(self.k_int)
+                     + len(self.k_ext)
+                     + len(self.m_mehler))
 
         Adift = self.model_matrix(self.tv, self.r_geo, self.theta_r, self.phi_r,
                                   reverse_order=True)[~self.nan_DIF] # CUIDAO!!!!!!!!!!!!!!!!!!!!!!!
@@ -209,17 +223,26 @@ class Model:
             M_reg = self.regularization_matrix()
             # how_big = ops.rms(Adift.T @ Adift), ops.rms(M_reg)
             # print(f"let's HECK: {how_big}")
-            gptlsr = numpy.linalg.lstsq(Adift.T @ Adift + M_reg,
-                                        Adift.T @ data)[0]
+            gptlsr_reversed = numpy.linalg.lstsq(Adift.T @ Adift + M_reg,
+                                                 Adift.T @ data)[0]
 
-
-        #CUIDAO
-        print(gptlsr)
-        gptlsr = numpy.concatenate(gptlsr.reshape(24,85).T)
-        
+        gptlsr = numpy.concatenate(gptlsr_reversed.reshape(n_degrees,n_knots).T)
         self.g_last_solved = gptlsr
 
-        return gptlsr
+        if complete:
+            ds = numpy.diag(numpy.repeat(self.reg_br2(), len(self.knots)))
+            dtds = (numpy.tile(self.reg_dt2_2(), (n_degrees, n_degrees)) *
+                    numpy.repeat(
+                        numpy.repeat(
+                            numpy.diag(self.reg_br2()),
+                            len(self.knots), axis=0), len(self.knots), axis=1))
+        
+            return {"coefs" : gptlsr,
+                    "coefs_reversed" : gptlsr_reversed,
+                    "norm_t" : gptlsr_reversed @ dtds @ gptlsr_reversed,
+                    "norm_s" : gptlsr_reversed @ ds @ gptlsr_reversed}
+        else:
+            return gptlsr
 
     def synth_data(self, tv, rv, thetav, phiv, g=None):
 
@@ -316,6 +339,8 @@ class Model:
         return Adif_rscha
 
     def model_matrix(self, tv, rv, thetav, phiv, Bx=None, By=None, Bz=None, reverse_order=False):
+
+        #print("calling model_matrix ...")
         Adif_rscha_test = self.spatial_matrix(rv, thetav, phiv, Bx, By, Bz)
         At = self.temporal_matrix(tv)
         At3 = numpy.vstack((At, At, At))
