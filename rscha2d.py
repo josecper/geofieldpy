@@ -24,7 +24,8 @@ class Model:
     """
 
     def __init__(self):
-        self.model_matrix = memory.cache(self.model_matrix)
+        #self.model_matrix = memory.cache(self.model_matrix)
+        self.spatial_matrix = memory.cache(self.spatial_matrix)
         pass
 
     # paso 1: los parametros

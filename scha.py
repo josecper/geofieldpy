@@ -231,7 +231,8 @@ def polar_contour(scalar, thetav, phiv, theta0, ax, resolution=200, base=None):
 
     return base.contourf(lon, lat, xx, 40, latlon=True, ax=ax, cmap="bwr")
 
-def polar_tricontour(scalar, thetav, phiv, theta0, ax, base=None, cmap="bwr", scale="symmetric", lines=False, lims=None):
+def polar_tricontour(scalar, thetav, phiv, theta0, ax, base=None, cmap="bwr", scale="symmetric", lines=0, lims=None,
+                     nlevels=60):
     
     lat0 = numpy.rad2deg(theta0)
     from mpl_toolkits.basemap import Basemap
@@ -258,11 +259,11 @@ def polar_tricontour(scalar, thetav, phiv, theta0, ax, base=None, cmap="bwr", sc
     else:
         vmin=-numpy.max(abs(scalar))*1.1; vmax=numpy.max(abs(scalar))*1.1
 
-    trifill=ax.tricontourf(x_coord, y_coord, scalar, 60, cmap=cmap,
+    trifill=ax.tricontourf(x_coord, y_coord, scalar, nlevels, cmap=cmap,
                            vmin=vmin, vmax=vmax)
 
-    if lines:
-        ax.tricontour(x_coord, y_coord, scalar, 10, colors="white",
+    if lines != 0:
+        ax.tricontour(x_coord, y_coord, scalar, lines, colors="white",
                            vmin=vmin, vmax=vmax)
 
     return trifill
