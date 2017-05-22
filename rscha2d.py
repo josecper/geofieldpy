@@ -13,9 +13,6 @@ import ops
 import joblib
 import tempfile
 
-memory = joblib.Memory(cachedir=tempfile.mkdtemp())
-
-
 class Model:
     """
     clase que reprensenta un modelo rscha-2d guay
@@ -25,7 +22,7 @@ class Model:
 
     def __init__(self):
         #self.model_matrix = memory.cache(self.model_matrix)
-        self.spatial_matrix = memory.cache(self.spatial_matrix)
+        #self.spatial_matrix = memory.cache(self.spatial_matrix)
         pass
 
     # paso 1: los parametros
@@ -124,6 +121,11 @@ class Model:
                                           self.nan_I,
                                           self.nan_F))
 
+        self.D_w = self.D_o
+        self.I_w = self.I_o
+        self.F_w = self.F_o
+        self.tw = self.tv
+
         self.refresh_data()
 
     def refresh_data(self):
@@ -192,14 +194,14 @@ class Model:
 
         t_err[t_err < 1] = 1
         
-        self.D_o = self.D_o + sigma_65_D*numpy.random.randn(*self.D_o.shape)
-        self.I_o = self.I_o + sigma_65_I*numpy.random.randn(*self.I_o.shape)
-        self.F_o = self.F_o + sigma_65_F*numpy.random.randn(*self.F_o.shape)
+        self.D_w = self.D_o + sigma_65_D*numpy.random.randn(*self.D_o.shape)
+        self.I_w = self.I_o + sigma_65_I*numpy.random.randn(*self.I_o.shape)
+        self.F_w = self.F_o + sigma_65_F*numpy.random.randn(*self.F_o.shape)
 
-        self.D_o = trig.mindiff(self.D_o, 0)
-        self.I_o = trig.mindiff(self.I_o, 0)
+        self.D_w = trig.mindiff(self.D_w, 0)
+        self.I_w = trig.mindiff(self.I_w, 0)
 
-        self.tv = self.tv + (numpy.random.random(*self.tv.shape) - 0.5)*(2*self.t_err)
+        self.tw = self.tv + (numpy.random.random(*self.tv.shape) - 0.5)*(2*self.t_err)
 
     def change_indices(Adift):
         pass

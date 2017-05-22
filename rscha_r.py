@@ -3,6 +3,8 @@ import mehler
 import scha
 import xyzfield
 import sys
+import joblib
+import tempfile
 
 from numpy import cos, sin
 from scipy.special import lpmv
@@ -12,6 +14,9 @@ a_r = 6371.2
 a_ellip = 6378.137
 b_ellip = 6356.752
 
+memory = joblib.Memory(cachedir=tempfile.mkdtemp())
+
+@memory.cache
 def rscha_condition_matrix_dif(kmn_leg_in, kmn_leg_ex, m_mehler, rv, thetav, phiv, theta_0, Bx_ref, By_ref, Bz_ref,
                                F_avg, normalize=True):
 

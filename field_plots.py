@@ -12,7 +12,7 @@ def cute_lines(base_trans, ax):
     base_trans.drawparallels(numpy.linspace(0, 90, 15), ax=ax, color="black", linewidth=0.4)
     base_trans.drawcoastlines(ax=ax, linewidth=0.3)
 
-def component_residual_plot(thetav, phiv, theta_0, theta_c, phi_c, components, residuals=None, dots=False, scales=None, cmaps=None, titles=None, lims=None, **pt_args):
+def component_residual_plot(thetav, phiv, theta_0, theta_c, phi_c, components, residuals=None, dots=False, scales=None, cmaps=None, titles=None, lims=None, cbar=True, **pt_args):
 
     lon_c, lat_c = numpy.rad2deg((phi_c, numpy.pi/2 - theta_c))
 
@@ -51,9 +51,13 @@ def component_residual_plot(thetav, phiv, theta_0, theta_c, phi_c, components, r
         )
 
     for comp, ax, scale, cmap, lim, title in zip(components, field_axes, scales, cmaps, lims, titles):
-        base.colorbar(scha.polar_tricontour(comp, thetav, phiv, theta_0, ax=ax,
+        if cbar:
+            base.colorbar(scha.polar_tricontour(comp, thetav, phiv, theta_0, ax=ax,
                                             base=base, cmap=cmap, scale=scale, lims=lim, **pt_args),
-                      ax=ax, fig=fig, location='right', format='%.1f')
+                          ax=ax, fig=fig, location='right', format='%.1f')
+        else:
+            scha.polar_tricontour(comp, thetav, phiv, theta_0, ax=ax,
+                                  base=base, cmap=cmap, scale=scale, lims=lim, **pt_args)
         #tric=scha.polar_tricontour(comp, thetav, phiv, theta_0, ax=ax, base=base, cmap=cmap, scale=scale, **pt_args)
         #cbar=fig.colorbar(tric, ax=ax, orientation="vertical", shrink=0.7)
         ax.set_title(title)
