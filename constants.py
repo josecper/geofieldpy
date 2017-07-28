@@ -9,8 +9,8 @@ b_ellip = 6356.752
 satan = 666
 
 # stats
-min_Ferr = 5.0   # (uT)
-min_a95 = 0.075  # (rad)
+min_Ferr = 2.0   # (uT)
+min_a95 = 0.1  # (rad)
 
 # evil factor (good = 1)
 evil = 1.0

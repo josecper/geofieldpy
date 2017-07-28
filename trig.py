@@ -29,7 +29,11 @@ def relocate(D, I, F, theta, phi, theta_ref, phi_ref):
     lat = numpy.pi/2 - theta
     lon = phi
 
-    lat_gsite = numpy.arctan(numpy.tan(I)/2)
+    I_fake = I.copy()
+    I_fake[numpy.isnan(I_fake)] = numpy.arctan(2*numpy.tan(numpy.pi/2
+                                    - theta[numpy.isnan(I_fake)]))
+
+    lat_gsite = numpy.arctan(numpy.tan(I_fake)/2)
     lat_vgp = numpy.arcsin(numpy.sin(lat_gsite)*numpy.sin(lat)
                            + numpy.cos(lat_gsite)*numpy.cos(lat)
                            * numpy.cos(D))
@@ -54,5 +58,7 @@ def relocate(D, I, F, theta, phi, theta_ref, phi_ref):
                            / numpy.cos(lat_at))
     F_reloc = (F*numpy.sqrt(1+3*numpy.sin(lat_at)**2)
                / numpy.sqrt(1+3*numpy.sin(lat)**2))
+
+    I_reloc[numpy.isnan(I)] = numpy.nan
 
     return D_reloc, I_reloc, F_reloc

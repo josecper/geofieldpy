@@ -23,13 +23,14 @@ class Model:
     def __init__(self):
         #self.model_matrix = memory.cache(self.model_matrix)
         #self.spatial_matrix = memory.cache(self.spatial_matrix)
-        pass
+        pass        
 
     # paso 1: los parametros
     def set_model_params(self, theta_c, phi_c, theta_0d, cap_edge=0.1,
                          kmax_int=3, kmax_ext=3, m_max=2, g10_ref=-30,
                          knots=numpy.arange(-1000, 2050, 50),
-                         spatial_reg=0.0, temporal_reg=0.0):
+                         spatial_reg=0.0, temporal_reg=0.0,
+                         refmodel=None):
         self.theta_c = theta_c
         self.phi_c = phi_c
         self.theta_0d = theta_0d
@@ -43,8 +44,27 @@ class Model:
         self.spatial_reg = spatial_reg
         self.temporal_reg = temporal_reg
 
+        self.refmodel = refmodel
+
         # ya se puede calcular el grado
         self.calculate_degrees()
+
+    def export_params(self):
+        s = (f"rscha_2d \n"
+             f" theta_c : {self.theta_c}\n"
+             f" phi_c : {self.phi_c}\n"
+             f" theta_0d : {self.theta_0d}\n"
+             f" theta_0p : {self.theta_0p}\n"
+             f" kmax_int : {self.kmax_int}\n"
+             f" kmax_ext : {self.kmax_ext}\n"
+             f" m_max : {self.m_max}\n"
+             f" g10_ref : {self.g10_ref}\n"
+             f" knots : {self.knots}\n"
+             f" spatial_reg : {self.spatial_reg}\n"
+             f" temporal_reg : {self.temporal_reg}\n"
+             f" refmodel : {self.refmodel}\n"
+             )
+        return s
 
     def calculate_degrees(self):
 
@@ -79,6 +99,7 @@ class Model:
         """
         datos_t = numpy.loadtxt(fname).T
         self.volcanic = (datos_t[0] == 888)
+        self.instrumental = (datos_t[0] == 777)
         print(self.volcanic.sum())
         # convención ancestral
         datos_t[datos_t == 999] = numpy.nan
@@ -136,7 +157,7 @@ class Model:
         
         # sintetizar el dipoling
         self.Bx_dip, self.By_dip, self.Bz_dip = self.synth_dipole(self.theta_geo,
-                                                                  self.phi_geo)
+                                                                  self.phi_geo, self.tv)
 
         self.D_dip, self.I_dip, self.F_dip, self.H_dip = xyzfield.xyz2difh(self.Bx_dip,
                                                                            self.By_dip,
@@ -179,13 +200,17 @@ class Model:
 
     def wiggle(self):
 
+        Iw = self.I_o.copy()
+        Iw[numpy.isnan(Iw)] = numpy.arctan(2*numpy.tan(numpy.pi/2
+                                - self.thetav[numpy.isnan(Iw)]))
         sigma_65_D = 81/140*self.a95/numpy.cos(self.I_o)
         sigma_65_I = 81/140*self.a95
         sigma_65_F = self.F_err.copy()
         t_err = self.t_err.copy()
 
         sigma_65_D[numpy.isnan(sigma_65_D) |
-                   (self.a95 < constants.min_a95)] = 81/140*constants.min_a95
+                   (self.a95 < constants.min_a95)] = (81/140*constants.min_a95
+                    * numpy.cos(Iw[numpy.isnan(sigma_65_D) | (self.a95 < constants.min_a95)]))
         sigma_65_I[numpy.isnan(sigma_65_I) |
                    (self.a95 < constants.min_a95)] = 81/140*constants.min_a95
 
@@ -203,6 +228,11 @@ class Model:
 
         self.tw = self.tv + (numpy.random.random(*self.tv.shape) - 0.5)*(2*self.t_err)
 
+        if self.refmodel is not None:
+            #self.refresh_data()
+            pass
+        self.calculate_residuals()
+
     def change_indices(Adift):
         pass
 
@@ -213,7 +243,7 @@ class Model:
                      + len(self.k_ext)
                      + len(self.m_mehler))
 
-        Adift = self.model_matrix(self.tv, self.r_geo, self.theta_r, self.phi_r,
+        Adift = self.model_matrix(self.tw, self.r_geo, self.theta_r, self.phi_r,
                                   reverse_order=True)[~self.nan_DIF] # CUIDAO!!!!!!!!!!!!!!!!!!!!!!!
         self.Adift_last_solved = Adift
 
@@ -253,7 +283,7 @@ class Model:
             g = self.g_last_solved
 
         rv, theta_r, phi_r = self.rotate_coords_to_cap(rv, thetav, phiv)
-        Bx, By, Bz = self.synth_dipole(thetav, phiv)
+        Bx, By, Bz = self.synth_dipole(thetav, phiv, tv)
         D_dip, I_dip, F_dip, H_dip = xyzfield.xyz2difh(Bx, By, Bz)
         
         Bxr, Byr, Bzr = self.rotate_vectors_to_cap(thetav, phiv,
@@ -270,11 +300,31 @@ class Model:
 
         return D_m, I_m, F_m
         
-    def synth_dipole(self, thetav, phiv):
+    def synth_dipole(self, thetav, phiv, tv):
 
-        Bx_dip, By_dip, Bz_dip = scha.xyzfield((1,), (0,), (1,),
-                                               (self.g10_ref,),
-                                               thetav, phiv)
+        if self.refmodel is not None:
+
+            coefs = self.refmodel["coefs"]
+            
+            g_interp = scipy.interpolate.interp1d(
+                self.refmodel["years"], coefs,
+                axis=0, kind="cubic", fill_value="extrapolate")(tv)
+
+            Bx_dip = numpy.empty_like(tv)
+            By_dip = numpy.empty_like(tv)
+            Bz_dip = numpy.empty_like(tv)
+
+            for i, (year, theta, phi) in enumerate(zip(tv, thetav, phiv)):
+                bx, by, bz = xyzfield.xyzfieldv2(g_interp[i, :],
+                                                 numpy.atleast_1d(phi),
+                                                 numpy.atleast_1d(theta))
+                Bx_dip[i] = bx
+                By_dip[i] = by
+                Bz_dip[i] = bz
+        else:
+            Bx_dip, By_dip, Bz_dip = scha.xyzfield((1,), (0,), (1,),
+                                                   (self.g10_ref,),
+                                                   thetav, phiv)
 
         return Bx_dip, By_dip, Bz_dip
 
@@ -308,9 +358,9 @@ class Model:
 
     def calculate_residuals(self):
 
-        self.D_res = trig.mindiff(self.D_o, self.D_dip)
-        self.I_res = trig.mindiff(self.I_o, self.I_dip)
-        self.F_res = self.F_o - self.F_dip
+        self.D_res = trig.mindiff(self.D_w, self.D_dip)
+        self.I_res = trig.mindiff(self.I_w, self.I_dip)
+        self.F_res = self.F_w - self.F_dip
         self.F_res_norm = self.F_res/self.F_dip
 
     def temporal_matrix(self, tv):
