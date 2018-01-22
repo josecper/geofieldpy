@@ -15,7 +15,7 @@ import tempfile
 
 class Model:
     """
-    clase que reprensenta un modelo rscha-2d guay
+    clase que representa un modelo rscha-2d guay
     todos los ángulos están en radianes pero el archivo está
     en grados ¯\_(ツ)_/¯
     """
@@ -30,7 +30,8 @@ class Model:
                          kmax_int=3, kmax_ext=3, m_max=2, g10_ref=-30,
                          knots=numpy.arange(-1000, 2050, 50),
                          spatial_reg=0.0, temporal_reg=0.0,
-                         refmodel=None):
+                         refmodel=None, D_weight=1.0, I_weight=1.0,
+                         F_weight=1.0):
         self.theta_c = theta_c
         self.phi_c = phi_c
         self.theta_0d = theta_0d
@@ -45,6 +46,10 @@ class Model:
         self.temporal_reg = temporal_reg
 
         self.refmodel = refmodel
+
+        self.D_weight = D_weight
+        self.I_weight = I_weight
+        self.F_weight = F_weight
 
         # ya se puede calcular el grado
         self.calculate_degrees()
@@ -63,6 +68,9 @@ class Model:
              f" spatial_reg : {self.spatial_reg}\n"
              f" temporal_reg : {self.temporal_reg}\n"
              f" refmodel : {self.refmodel}\n"
+             f" D_weight : {self.D_weight}\n"
+             f" I_weight : {self.I_weight}\n"
+             f" F_weight : {self.F_weight}\n"
              )
         return s
 
@@ -100,7 +108,8 @@ class Model:
         datos_t = numpy.loadtxt(fname).T
         self.volcanic = (datos_t[0] == 888)
         self.instrumental = (datos_t[0] == 777)
-        print(self.volcanic.sum())
+        self.quality = (datos_t[-1] == 888)
+        #print(self.volcanic.sum())
         # convención ancestral
         datos_t[datos_t == 999] = numpy.nan
 
@@ -114,6 +123,7 @@ class Model:
         self.ids = numpy.arange(len(thetav))[in_cap]
         self.in_cap = in_cap
         self.volcanic = self.volcanic[in_cap]
+        self.quality = self.quality[in_cap]
 
         self.lat = datos_t[4][in_cap]
         self.lon = datos_t[5][in_cap]
@@ -147,6 +157,8 @@ class Model:
         self.F_w = self.F_o
         self.tw = self.tv
 
+        self.mask = numpy.ones_like(self.nan_DIF, dtype=bool)
+
         self.refresh_data()
 
     def refresh_data(self):
@@ -157,7 +169,7 @@ class Model:
         
         # sintetizar el dipoling
         self.Bx_dip, self.By_dip, self.Bz_dip = self.synth_dipole(self.theta_geo,
-                                                                  self.phi_geo, self.tv)
+                                                                  self.phi_geo, self.tw)
 
         self.D_dip, self.I_dip, self.F_dip, self.H_dip = xyzfield.xyz2difh(self.Bx_dip,
                                                                            self.By_dip,
@@ -198,7 +210,7 @@ class Model:
 
         return out_D, out_I, out_F
 
-    def wiggle(self):
+    def wiggle(self, refresh_data=False):
 
         Iw = self.I_o.copy()
         Iw[numpy.isnan(Iw)] = numpy.arctan(2*numpy.tan(numpy.pi/2
@@ -209,15 +221,20 @@ class Model:
         t_err = self.t_err.copy()
 
         sigma_65_D[numpy.isnan(sigma_65_D) |
-                   (self.a95 < constants.min_a95)] = (81/140*constants.min_a95
-                    * numpy.cos(Iw[numpy.isnan(sigma_65_D) | (self.a95 < constants.min_a95)]))
+                   (self.a95 < constants.min_a95) |
+                   (self.a95 > constants.max_a95)] = (81/140*constants.min_a95
+                    / numpy.cos(Iw[numpy.isnan(sigma_65_D) |
+                                   (self.a95 < constants.min_a95) |
+                                   (self.a95 > constants.max_a95)]))
         sigma_65_I[numpy.isnan(sigma_65_I) |
-                   (self.a95 < constants.min_a95)] = 81/140*constants.min_a95
+                   (self.a95 < constants.min_a95) |
+                   (self.a95 > constants.max_a95)] = 81/140*constants.min_a95
 
         sigma_65_F[numpy.isnan(sigma_65_F) |
-                   (sigma_65_F < constants.min_Ferr)] = constants.min_Ferr
+                   (sigma_65_F < constants.min_Ferr) |
+                   (sigma_65_F > constants.max_Ferr)] = constants.min_Ferr
 
-        t_err[t_err < 1] = 1
+        t_err[t_err < constants.min_terr] = constants.min_terr
         
         self.D_w = self.D_o + sigma_65_D*numpy.random.randn(*self.D_o.shape)
         self.I_w = self.I_o + sigma_65_I*numpy.random.randn(*self.I_o.shape)
@@ -226,11 +243,11 @@ class Model:
         self.D_w = trig.mindiff(self.D_w, 0)
         self.I_w = trig.mindiff(self.I_w, 0)
 
-        self.tw = self.tv + (numpy.random.random(*self.tv.shape) - 0.5)*(2*self.t_err)
+        self.tw = self.tv + numpy.random.randn(*self.tv.shape)*self.t_err
 
-        if self.refmodel is not None:
-            #self.refresh_data()
-            pass
+        if refresh_data:
+            self.refresh_data()
+            
         self.calculate_residuals()
 
     def change_indices(Adift):
@@ -243,11 +260,16 @@ class Model:
                      + len(self.k_ext)
                      + len(self.m_mehler))
 
-        Adift = self.model_matrix(self.tw, self.r_geo, self.theta_r, self.phi_r,
+        Adift = self.model_matrix(self.tw,
+                                  self.r_geo,
+                                  self.theta_r,
+                                  self.phi_r,
                                   reverse_order=True)[~self.nan_DIF] # CUIDAO!!!!!!!!!!!!!!!!!!!!!!!
         self.Adift_last_solved = Adift
 
-        data = numpy.concatenate((self.D_res, self.I_res, self.F_res_norm))[~self.nan_DIF]
+        data = numpy.concatenate((self.D_res * self.D_weight,
+                                  self.I_res * self.I_weight,
+                                  self.F_res_norm * self.F_weight))[~self.nan_DIF]
         self.data_last_solved = data
 
         if (self.temporal_reg == 0.0) and (self.spatial_reg == 0.0):
@@ -294,9 +316,9 @@ class Model:
 
         Ds, Is, Fs = numpy.split(synth, 3)
 
-        D_m = D_dip + Ds
-        I_m = I_dip + Is
-        F_m = F_dip + Fs*F_dip
+        D_m = D_dip + Ds / self.D_weight
+        I_m = I_dip + Is / self.I_weight
+        F_m = F_dip + Fs*F_dip / self.F_weight
 
         return D_m, I_m, F_m
         
